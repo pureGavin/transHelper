@@ -1,0 +1,42 @@
+# third-party toolchain, caches, downloads
+/.tools/
+*.zip
+*.7z
+*.rar
+*.tar
+*.gz
+*.msi
+
+# build output
+/dist/
+*.exe
+*.dll
+*.test
+*.out
+*.prof
+*.pprof
+
+# logs, temp, backup
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+
+# local config and secrets
+.env
+.env.*
+*.local.*
+*.pem
+*.key
+
+# editor / IDE / AI-tool local state
+/.cursor/
+/.vscode/
+/.idea/
+*.code-workspace
+
+# OS junk
+Thumbs.db
+Desktop.ini
+.DS_Store
