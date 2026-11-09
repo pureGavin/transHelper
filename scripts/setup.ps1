@@ -1,6 +1,6 @@
-# Download the Go toolchain into .tools, check it, and print its version.
-# Safe to run again: a matching zip and install are left in place.
-# Does not run the MSI, setx, or "go env -w".
+﻿# 把 Go 工具链下载到 .tools，校验后打印版本。
+# 可以重复运行：哈希匹配的压缩包和已安装的版本会原样保留。
+# 不运行 MSI，不用 setx，也不执行 go env -w。
 
 $ErrorActionPreference = 'Stop'
 

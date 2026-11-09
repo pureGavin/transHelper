@@ -1,8 +1,7 @@
-# Dot-source this file so the variables stay in the current session:
+﻿# 用点号加载，变量才会留在当前会话：
 #   . .\scripts\env.ps1
-# Running it with -File only affects that process, then exits.
-# Nothing here writes the registry or the user profile. Close the
-# session and the process environment returns to normal.
+# 用 -File 运行只影响那个进程，脚本结束后环境就恢复了。
+# 这里不写注册表，也不改用户配置。关掉终端后，环境变量回到原来的值。
 
 $ErrorActionPreference = 'Stop'
 
@@ -20,7 +19,7 @@ $env:GOTOOLCHAIN = 'local'
 $env:CGO_ENABLED = '0'
 $env:GOPROXY = 'https://goproxy.cn|https://proxy.golang.org|direct'
 
-# Telemetry follows APPDATA. GOTELEMETRYDIR is not settable.
+# 遥测目录跟着 APPDATA 走。GOTELEMETRYDIR 不能单独设置。
 $env:APPDATA = Join-Path $tools 'home\Roaming'
 $env:LOCALAPPDATA = Join-Path $tools 'home\Local'
 $env:TEMP = Join-Path $tools 'tmp'
