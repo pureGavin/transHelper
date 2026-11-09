@@ -1,4 +1,4 @@
-# third-party toolchain, caches, downloads
+# 第三方工具链、缓存和下载物
 /.tools/
 *.zip
 *.7z
@@ -7,7 +7,7 @@
 *.gz
 *.msi
 
-# build output
+# 构建产物
 /dist/
 *.exe
 *.dll
@@ -16,27 +16,30 @@
 *.prof
 *.pprof
 
-# logs, temp, backup
+# 日志、临时文件和备份
 *.log
 *.tmp
 *.bak
 *.swp
 *~
 
-# local config and secrets
+# 本地配置和密钥
 .env
 .env.*
 *.local.*
 *.pem
 *.key
 
-# editor / IDE / AI-tool local state
-/.cursor/
+# 编辑器、IDE 和 AI 工具的本地状态
+# .cursor 只跟踪 rules 和 skills；调试日志、plans 等留在本地
+/.cursor/*
+!/.cursor/rules/
+!/.cursor/skills/
 /.vscode/
 /.idea/
 *.code-workspace
 
-# OS junk
+# 系统垃圾文件
 Thumbs.db
 Desktop.ini
 .DS_Store
