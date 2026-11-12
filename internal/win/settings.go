@@ -105,20 +105,21 @@ var (
 
 // settingsWindow 是托盘菜单里的设置窗口。同一时间只开一个。
 type settingsWindow struct {
-	hwnd     uintptr
-	tip      uintptr
-	font     uintptr
-	dpi      uint32
-	base     config.Config
-	url      uintptr
-	model    uintptr
-	key      uintptr
-	timeout  uintptr
-	showKey  uintptr
-	applyBtn uintptr
-	cancel   uintptr
-	labels   [4]uintptr
-	tipText  [4][]uint16
+	hwnd         uintptr
+	tip          uintptr
+	font         uintptr
+	dpi          uint32
+	base         config.Config
+	url          uintptr
+	model        uintptr
+	key          uintptr
+	timeout      uintptr
+	showKey      uintptr
+	applyBtn     uintptr
+	cancel       uintptr
+	versionLabel uintptr
+	labels       [4]uintptr
+	tipText      [4][]uint16
 }
 
 func (h *host) openSettings() {
@@ -174,7 +175,7 @@ func (s *settingsWindow) create(h *host) error {
 	if dpi, _, _ := procGetDpiForWindow.Call(hwnd); dpi != 0 {
 		s.dpi = uint32(dpi)
 	}
-	if err := s.createChildren(h.instance); err != nil {
+	if err := s.createChildren(h.instance, h.version); err != nil {
 		s.close()
 		return err
 	}
@@ -223,7 +224,7 @@ func unregisterSettingsClass(instance windows.Handle) {
 	settingsClassAtom = 0
 }
 
-func (s *settingsWindow) createChildren(instance windows.Handle) error {
+func (s *settingsWindow) createChildren(instance windows.Handle, version string) error {
 	labelStyle := uintptr(wsChild | wsVisible | ssCenterImage)
 	editStyle := uintptr(wsChild | wsVisible | wsTabStop | wsBorder | esAutohScroll)
 	labels := []string{"模型地址", "模型名称", "API Key", "超时（秒）"}
@@ -254,6 +255,13 @@ func (s *settingsWindow) createChildren(instance windows.Handle) error {
 		return err
 	}
 	if s.cancel, err = createControl("BUTTON", "取消", uintptr(wsChild|wsVisible|wsTabStop), 0, 0, 10, 10, s.hwnd, idCancel, instance); err != nil {
+		return err
+	}
+	if version == "" {
+		version = "dev"
+	}
+	// 和按钮同一行，ssCenterImage 让文字在按钮高度里竖直居中。
+	if s.versionLabel, err = createControl("STATIC", "版本 "+version, labelStyle, 0, 0, 10, 10, s.hwnd, 0, instance); err != nil {
 		return err
 	}
 	return nil
@@ -334,6 +342,11 @@ func (s *settingsWindow) place() {
 	applyX := cancelX - s.scale(layoutGap) - s.scale(layoutBtnW)
 	moveWindow(s.applyBtn, applyX, btnY, s.scale(layoutBtnW), s.scale(layoutBtnH))
 	moveWindow(s.cancel, cancelX, btnY, s.scale(layoutBtnW), s.scale(layoutBtnH))
+	versionW := applyX - s.scale(layoutMargin) - s.scale(layoutGap)
+	if versionW < s.scale(40) {
+		versionW = s.scale(40)
+	}
+	moveWindow(s.versionLabel, s.scale(layoutMargin), btnY, versionW, s.scale(layoutBtnH))
 }
 
 func (s *settingsWindow) fit(center bool) {
@@ -398,7 +411,7 @@ func (s *settingsWindow) applyFont() {
 }
 
 func (s *settingsWindow) controls() []uintptr {
-	out := []uintptr{s.url, s.model, s.key, s.timeout, s.showKey, s.applyBtn, s.cancel}
+	out := []uintptr{s.url, s.model, s.key, s.timeout, s.showKey, s.applyBtn, s.cancel, s.versionLabel}
 	out = append(out, s.labels[:]...)
 	return out
 }
