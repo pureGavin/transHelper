@@ -94,3 +94,13 @@
 - 热键默认是 `Alt+Enter`（翻译并发送）和 `Alt+T`（只翻译），可以在配置里改。
 - 模型地址和模型名写在配置文件里，示例见 [transhelper.example.toml](transhelper.example.toml)。
 - 失败时托盘冒泡并响提示音。托盘图标右键可以退出。自定义图标已完成：紫色对话气泡加白色“译”，打进 exe。
+
+## 阶段 5：自动发布
+
+- [x] 发布包命名为 `transHelper-YYYY.MM.x-windows-amd64.zip`。
+
+  测试：`scripts\build.ps1` 生成 `dist\transHelper-<当前年>.<当前月>.0-windows-amd64.zip`，zip 里只有 exe、示例配置和 README。
+
+- [x] `x` 按年份计数，月份变化时不从 1 重新开始。
+
+  测试：没有 tag 时 `scripts\next-version.ps1` 输出 `<年>.<月>.1`。临时打上 `v2026.11.3` 和 `v2025.12.9` 后输出 `2026.11.4`，说明往年的 tag 不参与计数。测完删除这两个临时 tag。

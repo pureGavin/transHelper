@@ -29,7 +29,7 @@ go run ./cmd/transhelper -config transhelper.toml
 
 ## 下载使用
 
-1. 解压 `transhelper-<版本>-windows-amd64.zip`。
+1. 解压 `transHelper-<版本>-windows-amd64.zip`。
 2. 把同目录的 `transhelper.example.toml` 复制一份，改名为 `transhelper.toml`，填好模型地址和密钥。
 3. 双击 `transhelper.exe`。没有黑色控制台窗口，托盘里出现图标。
 4. 在 Teams 输入框里按 `Alt+T` 或 `Alt+Enter`。
@@ -41,21 +41,31 @@ go run ./cmd/transhelper -config transhelper.toml
 
 ## 构建发布包
 
-在项目根目录执行。默认版本号是 `0.1.0`。
+在项目根目录执行。不传版本号时，用当前北京时间的年月，末尾固定为 `.0`，例如 `2026.11.0`。
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Version 0.1.0
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Version 2026.11.0
 ```
 
 脚本会先跑 `gofmt`、`go vet` 和 `go test`，再打进图标和版本信息，用 `-H=windowsgui` 编出没有控制台的 exe。产物：
 
 - `dist\transhelper\transhelper.exe`，旁边还有示例配置和 README
-- `dist\transhelper-<版本>-windows-amd64.zip`
+- `dist\transHelper-<版本>-windows-amd64.zip`
 
 zip 里只有这三个文件。即使把带密钥的 `transhelper.toml` 放进 `dist\transhelper\`，它也不会进 zip。脚本结束时打印 exe 和 zip 的 SHA256。不用 UPX 压缩，压缩过的 exe 更容易被杀毒软件误报。
 
 `dist\transhelper\transhelper.exe` 正在运行时脚本会中止，先从托盘退出再构建。
+
+## 发布与版本号
+
+推送到 `main` 后，GitHub Actions 会构建并发布一个 Release。版本号是 `YYYY.MM.x`，按北京时间计算。
+
+- `YYYY` 是年份，`MM` 是月份。
+- `x` 是这一年的第几次发布。月份变化时继续累加，只有年份变化时才从 1 重新计数。例如 `2026.11.5` 的下一次是 `2026.12.6`，到了 2027 年则是 `2027.01.1`。
+- 每次成功发布都会留下 tag `vYYYY.MM.x`，下一次的 `x` 就是这些 tag 里的最大值加 1。
+- 在本机构建时不传 `-Version`，版本号是当前年月加 `.0`，例如 `2026.11.0`，用来和正式发布区分。
+- 提交说明里写上 `[skip ci]` 时，这次推送不会触发构建，也不会产生新的 Release。适合只改文档的提交。
 
 ## 开发环境
 
@@ -110,7 +120,8 @@ exe 没有代码签名。第一次运行时，Windows 可能提示“Windows 已
 
 ## 目录
 
-- `scripts/`：安装 Go、设置当前会话环境，以及 `build.ps1` 构建发布包。
+- `scripts/`：安装 Go、设置当前会话环境、`build.ps1` 构建发布包，以及 `next-version.ps1` 计算下一个版本号。
+- `.github/workflows/`：推送到 main 后构建并发布 Release。
 - `cmd/transhelper/`：正式程序。加载配置、保证单实例、写日志、跑消息循环。
 - `cmd/transhelper/winres/`：图标、清单和版本信息资源。
 - `cmd/trytranslate/`：用真实模型翻译样例句。

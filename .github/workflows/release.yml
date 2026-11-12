@@ -1,0 +1,71 @@
+# 推送到 main 后构建 Windows 发布包，并创建 GitHub Release。
+# 提交说明里包含 [skip ci] 时，GitHub 会跳过这次运行。
+
+name: release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Cache Go downloads
+        uses: actions/cache@v6
+        with:
+          path: |
+            .tools/downloads
+            .tools/gopath/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('scripts/setup.ps1', 'go.sum') }}
+
+      - name: Install Go toolchain
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Compute version
+        id: version
+        shell: powershell
+        run: |
+          $version = (powershell -NoProfile -ExecutionPolicy Bypass -File scripts\next-version.ps1 | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($version -notmatch '^\d{4}\.(0[1-9]|1[0-2])\.\d+$') { throw "invalid version: $version" }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$version" -Encoding ascii
+
+      - name: Build
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Version ${{ steps.version.outputs.version }}
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Publish release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $zip = "dist\transHelper-$version-windows-amd64.zip"
+          $exe = "dist\transhelper\transhelper.exe"
+          $exeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash.ToLowerInvariant()
+          $zipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+          $notesPath = Join-Path $env:RUNNER_TEMP "release-notes.txt"
+          $notes = "SHA256`r`ntranshelper.exe $exeHash`r`ntransHelper-$version-windows-amd64.zip $zipHash`r`n"
+          Set-Content -LiteralPath $notesPath -Value $notes -Encoding ascii
+          gh release create "v$version" $zip --target $env:GITHUB_SHA --title "transHelper $version" --notes-file $notesPath
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

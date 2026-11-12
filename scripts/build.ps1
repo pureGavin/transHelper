@@ -1,15 +1,22 @@
 ﻿# 构建发布包：无控制台窗口的 exe、示例配置和说明，再打成 zip。
-# 用法：powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 [-Version 0.1.0]
+# 用法：powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 [-Version 2026.11.1]
+# 不传 -Version 时用当前北京时间的年月，x 固定为 0，用来和正式发布区分。
 # 不用 UPX。压缩过的 exe 更容易被杀毒软件误报。
 
 param(
-    [string]$Version = "0.1.0"
+    [string]$Version = ""
 )
 
 $ErrorActionPreference = "Stop"
 
-if ($Version -notmatch '^\d+\.\d+\.\d+$') {
-    throw "版本号必须是 x.y.z，例如 0.1.0"
+if (-not $Version) {
+    $tz = [TimeZoneInfo]::FindSystemTimeZoneById('China Standard Time')
+    $now = [TimeZoneInfo]::ConvertTime([DateTime]::UtcNow, $tz)
+    $Version = '{0}.{1:D2}.0' -f $now.Year, $now.Month
+}
+
+if ($Version -notmatch '^\d{4}\.(0[1-9]|1[0-2])\.\d+$') {
+    throw "版本号必须是 YYYY.MM.x，例如 2026.11.1"
 }
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -73,7 +80,7 @@ if ($LASTEXITCODE -ne 0) {
 Copy-Item -LiteralPath (Join-Path $root "transhelper.example.toml") -Destination (Join-Path $outDir "transhelper.example.toml") -Force
 Copy-Item -LiteralPath (Join-Path $root "README.md") -Destination (Join-Path $outDir "README.md") -Force
 
-$zip = Join-Path $root ("dist\transhelper-{0}-windows-amd64.zip" -f $Version)
+$zip = Join-Path $root ("dist\transHelper-{0}-windows-amd64.zip" -f $Version)
 if (Test-Path -LiteralPath $zip) {
     Remove-Item -LiteralPath $zip -Force
 }
