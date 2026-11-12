@@ -11,7 +11,6 @@ import (
 	"io/fs"
 	"log"
 	"os"
-	"path/filepath"
 	"runtime"
 
 	"golang.org/x/sys/windows"
@@ -106,24 +105,13 @@ func newTranslator(cfg config.Config) app.Translator {
 }
 
 func newLogger() *log.Logger {
-	// 先写文件。-H=windowsgui 的程序没有控制台，os.Stderr 的句柄是无效的。
-	// MultiWriter 一旦某个 Writer 失败就不再写后面的，stderr 放在前面会让日志文件一直是空的。
-	var writers []io.Writer
-	exe, err := os.Executable()
-	if err == nil {
-		path := filepath.Join(filepath.Dir(exe), "transhelper.log")
-		file, openErr := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-		if openErr == nil {
-			writers = append(writers, file)
-		}
+	// 正式版是窗口程序，没有控制台，也不在 exe 旁边写日志文件。
+	// 从 cmd 用 2> 重定向时，这个句柄仍然可用，日志会进那个文件。
+	// go run 时 stderr 是终端，日志照常打出来。
+	if _, err := os.Stderr.Stat(); err == nil {
+		return log.New(os.Stderr, "", log.LstdFlags)
 	}
-	if _, statErr := os.Stderr.Stat(); statErr == nil {
-		writers = append(writers, os.Stderr)
-	}
-	if len(writers) == 0 {
-		writers = append(writers, io.Discard)
-	}
-	return log.New(io.MultiWriter(writers...), "", log.LstdFlags)
+	return log.New(io.Discard, "", 0)
 }
 
 var instanceMutex windows.Handle

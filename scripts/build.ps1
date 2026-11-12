@@ -71,10 +71,17 @@ if (-not (Test-Path -LiteralPath $outDir)) {
     New-Item -ItemType Directory -Path $outDir | Out-Null
 }
 
+# -buildmode=pie 打开 ASLR 和高熵 ASLR。-s -w 去掉符号表和 DWARF。
+# 编完再检查 PE 头，避免链接器默认值变了还照样发出去。
 $ldflags = "-H=windowsgui -s -w -X main.version=$Version"
-& go build -trimpath -ldflags $ldflags -o $exe .\cmd\transhelper
+& go build -trimpath -buildmode=pie -ldflags $ldflags -o $exe .\cmd\transhelper
 if ($LASTEXITCODE -ne 0) {
     throw "go build 失败，退出码 $LASTEXITCODE"
+}
+
+& go run ./cmd/pecheck $exe
+if ($LASTEXITCODE -ne 0) {
+    throw "pecheck 失败，退出码 $LASTEXITCODE"
 }
 
 Copy-Item -LiteralPath (Join-Path $root "README.md") -Destination (Join-Path $outDir "README.md") -Force

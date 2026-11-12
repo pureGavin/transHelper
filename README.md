@@ -22,7 +22,7 @@
 4. 在 Teams 输入框里按 `Alt+T` 或 `Alt+Enter`。
 5. 退出：在托盘图标上右键，选择“退出”。
 
-日志在 exe 旁边的 `transhelper.log`，只记错误、耗时和字数，不记消息内容。同一时间只能运行一个实例。
+正式版不在 exe 旁边写日志。需要排查时，在 cmd 里运行 `transhelper.exe 2> transhelper.log`，日志会进这个文件，只记错误、耗时和字数，不记消息内容。同一时间只能运行一个实例。
 
 未签名程序第一次运行时，Windows 和杀毒软件可能拦截，见“SmartScreen 与杀毒软件”。
 
@@ -81,7 +81,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup.ps1
 go run ./cmd/transhelper -config transhelper.toml
 ```
 
-开发时如果有控制台，日志也会打到终端；正式包没有控制台，只写文件。
+开发时如果有控制台，日志会打到终端。正式版没有控制台，也不写日志文件；需要时用 `transhelper.exe 2> transhelper.log` 把 stderr 重定向到文件。
 
 ### 构建发布包
 
@@ -92,7 +92,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Version 2026.11.0
 ```
 
-脚本会先跑 `gofmt`、`go vet` 和 `go test`，再打进图标和版本信息，用 `-H=windowsgui` 编出没有控制台的 exe。产物：
+脚本会先跑 `gofmt`、`go vet` 和 `go test`，再打进图标和版本信息，用 `-H=windowsgui` 编出没有控制台的 exe。构建使用 `-buildmode=pie` 和 `-s -w`，编完后检查 PE 头。产物：
 
 - `dist\transhelper\transhelper.exe`，旁边还有 README
 - `dist\transHelper-<版本>-windows-amd64.zip`
@@ -100,6 +100,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Version 2
 zip 里只有 exe 和 README。即使把带密钥的 `transhelper.toml` 放进 `dist\transhelper\`，它也不会进 zip。脚本结束时打印 exe 和 zip 的 SHA256。不用 UPX 压缩，压缩过的 exe 更容易被杀毒软件误报。
 
 `dist\transhelper\transhelper.exe` 正在运行时脚本会中止，先从托盘退出再构建。
+
+正式版 exe 必须带这些保护，缺一项构建就会失败：
+
+- ASLR（`DYNAMIC_BASE`）和 64 位高熵 ASLR（`HIGH_ENTROPY_VA`），由 `-buildmode=pie` 打开。
+- DEP（`NX_COMPAT`），数据页不能当代码执行。
+- 没有 COFF 符号表，也没有 `.debug` 段，由 `-s -w` 去掉。
+
+Go 链接器不支持 MSVC 的栈 canary（`/GS`）和控制流保护（`/guard:cf`）。运行时的 pclntab 会保留函数名，这是 Go 做回溯要用的，去不掉。
 
 ### 检查译文
 
@@ -131,7 +139,8 @@ exe 没有代码签名。第一次运行时，Windows 可能提示“Windows 已
 - `scripts/`：安装 Go、设置当前会话环境、`build.ps1` 构建发布包、`next-version.ps1` 计算下一个版本号、`github-issues.ps1` 提交和拉取 Issues，以及 `release-notes.ps1` 生成 Release 说明。
 - `.github/workflows/`：推送到 main 后构建并发布 Release。
 - `.cursor/skills/`：提交和拉取 GitHub Issues 的说明。
-- `cmd/transhelper/`：正式程序。加载配置、保证单实例、写日志、跑消息循环。
+- `cmd/transhelper/`：正式程序。加载配置、保证单实例、跑消息循环。
+- `cmd/pecheck/`：检查发布 exe 的 ASLR、DEP 和符号表。
 - `cmd/transhelper/winres/`：图标、清单和版本信息资源。
 - `cmd/trytranslate/`：用真实模型翻译样例句。
 - `internal/app/`：一次热键的流程编排，不调用 Win32。

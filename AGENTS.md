@@ -17,7 +17,7 @@
 - `.tools/` 丢失或刚克隆仓库后，运行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup.ps1`。
 - 不 vendor 依赖，版本由 `go.mod` 和 `go.sum` 锁定。
 - `go-winres` 由 `go.mod` 的 `tool` 指令锁定，用 `go tool go-winres` 调用，不安装到系统目录。
-- 发布包用 `scripts\build.ps1` 构建，产物在 `dist/`。推送到 main 后，GitHub Actions 用同一套脚本构建正式 Release，不把 `.tools/` 或 `dist/` 提交上去。
+- 发布包用 `scripts\build.ps1` 构建，产物在 `dist/`。构建使用 `-buildmode=pie` 和 `-s -w`，编完后用 `cmd/pecheck` 检查 ASLR、高熵 ASLR、DEP 和空符号表。推送到 main 后，GitHub Actions 用同一套脚本构建正式 Release，不把 `.tools/` 或 `dist/` 提交上去。
 
 ## 代码与注释
 
@@ -35,6 +35,7 @@
 - `.github/workflows/`：推送到 main 后构建并发布 Release。
 - `.cursor/skills/`：提交和拉取 GitHub Issues 的说明。
 - `cmd/transhelper/`：正式程序入口。
+- `cmd/pecheck/`：检查发布 exe 的 ASLR、DEP 和符号表。
 - `cmd/transhelper/winres/`：图标、清单和版本信息资源。
 - `cmd/trytranslate/`：用真实模型翻译样例句。
 - `internal/config/`：读取和写回 TOML 配置。默认内容在 `template.toml`。
