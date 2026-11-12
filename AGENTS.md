@@ -21,8 +21,22 @@
 
 - 代码注释用中文。导出的类型和函数写中文文档注释，按 Go 惯例以标识符名开头，例如 `// Translate 把中文译成英文`。
 - Win32 调用、按键时序、边界情况等看代码看不出原因的地方，用中文注释写明原因。
+- Win32 调用只放在 `internal/win`。热键解析、配置、翻译和流程编排都不引用它，方便单测。
+- 模型密钥只写在被 Git 忽略的 `transhelper.toml`。`transhelper.example.toml` 的 `api_key` 留空。
 - `.ps1` 用带 BOM 的 UTF-8 保存：Windows PowerShell 5.1 读无 BOM 的文件时按系统代码页解码，中文会乱码。Go 源码用无 BOM 的 UTF-8。
 - 全仓库行尾统一 LF，见 `.gitattributes`。构建产物输出到 `dist/`，该目录已被忽略。
+
+## 目录
+
+- `scripts/`：安装 Go 和设置当前会话环境的脚本。
+- `cmd/transhelper/`：正式程序入口。
+- `cmd/trytranslate/`：用真实模型翻译样例句。
+- `internal/config/`：读取 TOML 配置。
+- `internal/hotkey/`：热键字符串解析。
+- `internal/translate/`：翻译客户端。
+- `internal/app/`：一次热键的流程编排。
+- `internal/win/`：全部 Win32 调用。
+- `.tools/`：Go 编译器和缓存，不入库。
 
 ## 文档同步
 
