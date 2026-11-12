@@ -4,7 +4,7 @@
 
 ## 状态
 
-0.1.0 可以打包分发。Teams 里的端到端测试已经通过。进度见 [TODO.md](TODO.md)。
+推送到 `main` 后，GitHub Actions 会自动构建并发布。Teams 里的端到端测试已经通过。进度见 [TODO.md](https://github.com/pureGavin/transHelper/blob/main/TODO.md)。
 
 ## 功能
 
@@ -14,7 +14,60 @@
 - 超时、报错或空文本时不粘贴、不发送，保留原文，托盘冒泡并响一声。
 - 纯 Go 静态编译，一个 exe 加一个配置文件即可分发。托盘图标是紫色对话气泡和白色“译”字。
 
-## 运行
+## 下载使用
+
+1. 打开 [Releases](https://github.com/pureGavin/transHelper/releases/latest)，下载 `transHelper-YYYY.MM.x-windows-amd64.zip`。
+2. 解压。
+3. 把同目录的 `transhelper.example.toml` 复制一份，改名为 `transhelper.toml`，填好模型地址。需要密钥时再填写 `api_key`。
+4. 双击 `transhelper.exe`。没有黑色控制台窗口，托盘里出现图标。
+5. 在 Teams 输入框里按 `Alt+T` 或 `Alt+Enter`。
+6. 退出：在托盘图标上右键，选择“退出”。
+
+找不到 `transhelper.toml` 时会弹出说明，不会静默退出。日志在 exe 旁边的 `transhelper.log`，只记错误、耗时和字数，不记消息内容。同一时间只能运行一个实例。
+
+未签名程序第一次运行时，Windows 和杀毒软件可能拦截，见“SmartScreen 与杀毒软件”。
+
+## 配置
+
+复制 [transhelper.example.toml](transhelper.example.toml) 为 `transhelper.toml`，按自己的环境修改。`transhelper.toml` 含有密钥，已被 Git 忽略。示例里的地址是占位用的 `http://localhost:8000/v1`，要改成自己的模型服务。
+
+- `model.base_url`、`model.model`：必填。地址是 OpenAI 兼容接口，末尾保留 `/v1`。
+- `model.api_key`：可选，不需要密钥时留空。
+- `model.timeout_seconds`：默认 20，范围 1 到 120。超时后不改动输入框。
+- `model.temperature`：默认 0.2，显式写 0 也会保留。
+- `model.system_prompt`：留空则使用程序内置的提示词。
+- `hotkeys.translate_and_send`：默认 `Alt+Enter`，翻译后替换输入框内容并回车发送。
+- `hotkeys.translate_only`：默认 `Alt+T`，只替换输入框内容，不发送。
+- `target.processes`：前台进程白名单，不区分大小写。默认是 `ms-teams.exe`（新版 Teams）和 `Teams.exe`（经典版）。
+
+热键至少要带 Ctrl、Alt、Win 中的一个，两个热键不能相同。配置里出现拼错的字段会直接报错。
+
+## 发布与版本号
+
+推送到 `main` 后，GitHub Actions 会构建并发布一个 Release。版本号是 `YYYY.MM.x`，按北京时间计算。
+
+- `YYYY` 是年份，`MM` 是月份。
+- `x` 是这一年的第几次发布。月份变化时继续累加，只有年份变化时才从 1 重新计数。例如 `2026.11.5` 的下一次是 `2026.12.6`，到了 2027 年则是 `2027.01.1`。
+- 每次成功发布都会留下 tag `vYYYY.MM.x`，下一次的 `x` 就是这些 tag 里的最大值加 1。
+- 在本机构建时不传 `-Version`，版本号是当前年月加 `.0`，例如 `2026.11.0`，用来和正式发布区分。
+- 提交说明里写上 `[skip ci]` 时，这次推送不会触发构建，也不会产生新的 Release。适合只改文档的提交。
+
+## 从源码构建
+
+日常使用直接下载 Release，不必安装 Go。下面是自己改代码时的做法。
+
+### 开发环境
+
+工具链放在项目内的 `.tools/`，不安装到系统目录。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup.ps1
+. .\scripts\env.ps1
+```
+
+终端执行策略受限时，先执行 `Set-ExecutionPolicy -Scope Process Bypass`，只影响当前会话。
+
+### 运行
 
 先准备好 `transhelper.toml`，然后：
 
@@ -23,23 +76,9 @@
 go run ./cmd/transhelper -config transhelper.toml
 ```
 
-不写 `-config` 时，程序读取 exe 同目录的 `transhelper.toml`。下载后的用法见下一节，自己构建见“构建发布包”。
+不写 `-config` 时，程序读取 exe 同目录的 `transhelper.toml`。开发时如果有控制台，日志也会打到终端；正式包没有控制台，只写文件。
 
-程序没有主窗口，任务栏托盘里有图标，右键选择“退出”。同一时间只能运行一个实例。日志写在 exe 旁边的 `transhelper.log`。开发时如果有控制台，同样的内容也会打到终端；正式包没有控制台，只写文件。日志只记错误、耗时和字数，不记消息内容。
-
-## 下载使用
-
-1. 解压 `transHelper-<版本>-windows-amd64.zip`。
-2. 把同目录的 `transhelper.example.toml` 复制一份，改名为 `transhelper.toml`，填好模型地址和密钥。
-3. 双击 `transhelper.exe`。没有黑色控制台窗口，托盘里出现图标。
-4. 在 Teams 输入框里按 `Alt+T` 或 `Alt+Enter`。
-5. 退出：在托盘图标上右键，选择“退出”。
-
-找不到 `transhelper.toml` 时会弹出说明，不会静默退出。日志在 exe 旁边的 `transhelper.log`。
-
-未签名程序第一次运行时，Windows 和杀毒软件可能拦截，见“SmartScreen 与杀毒软件”。
-
-## 构建发布包
+### 构建发布包
 
 在项目根目录执行。不传版本号时，用当前北京时间的年月，末尾固定为 `.0`，例如 `2026.11.0`。
 
@@ -57,43 +96,7 @@ zip 里只有这三个文件。即使把带密钥的 `transhelper.toml` 放进 `
 
 `dist\transhelper\transhelper.exe` 正在运行时脚本会中止，先从托盘退出再构建。
 
-## 发布与版本号
-
-推送到 `main` 后，GitHub Actions 会构建并发布一个 Release。版本号是 `YYYY.MM.x`，按北京时间计算。
-
-- `YYYY` 是年份，`MM` 是月份。
-- `x` 是这一年的第几次发布。月份变化时继续累加，只有年份变化时才从 1 重新计数。例如 `2026.11.5` 的下一次是 `2026.12.6`，到了 2027 年则是 `2027.01.1`。
-- 每次成功发布都会留下 tag `vYYYY.MM.x`，下一次的 `x` 就是这些 tag 里的最大值加 1。
-- 在本机构建时不传 `-Version`，版本号是当前年月加 `.0`，例如 `2026.11.0`，用来和正式发布区分。
-- 提交说明里写上 `[skip ci]` 时，这次推送不会触发构建，也不会产生新的 Release。适合只改文档的提交。
-
-## 开发环境
-
-工具链放在项目内的 `.tools/`，不安装到系统目录。
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup.ps1
-. .\scripts\env.ps1
-```
-
-终端执行策略受限时，先执行 `Set-ExecutionPolicy -Scope Process Bypass`，只影响当前会话。
-
-## 配置
-
-复制 [transhelper.example.toml](transhelper.example.toml) 为 `transhelper.toml`，按自己的环境修改。`transhelper.toml` 含有密钥，已被 Git 忽略。
-
-- `model.base_url`、`model.model`：必填。地址是 OpenAI 兼容接口，末尾保留 `/v1`。
-- `model.api_key`：可选，不需要密钥时留空。
-- `model.timeout_seconds`：默认 20，范围 1 到 120。超时后不改动输入框。
-- `model.temperature`：默认 0.2，显式写 0 也会保留。
-- `model.system_prompt`：留空则使用程序内置的提示词。
-- `hotkeys.translate_and_send`：默认 `Alt+Enter`，翻译后替换输入框内容并回车发送。
-- `hotkeys.translate_only`：默认 `Alt+T`，只替换输入框内容，不发送。
-- `target.processes`：前台进程白名单，不区分大小写。默认是 `ms-teams.exe`（新版 Teams）和 `Teams.exe`（经典版）。
-
-热键至少要带 Ctrl、Alt、Win 中的一个，两个热键不能相同。配置里出现拼错的字段会直接报错。
-
-## 检查译文
+### 检查译文
 
 不注册热键，直接用配置里的模型翻译样例句：
 
@@ -110,7 +113,7 @@ exe 没有代码签名。第一次运行时，Windows 可能提示“Windows 已
 
 杀毒软件可能把程序标成可疑。它会模拟按键、读写剪贴板，用来读取和替换 Teams 输入框里的文字，但不会安装键盘钩子，也不会改系统设置。
 
-被拦截时，先把文件的 SHA256 和构建脚本打印的值对一下。确认一致后再让杀毒软件信任它，或者自己从源码构建。也可以向杀毒厂商提交误报。
+被拦截时，先把文件的 SHA256 和 Release 说明里的值对一下。确认一致后再让杀毒软件信任它，或者自己从源码构建。也可以向杀毒厂商提交误报。
 
 ## 已知限制
 

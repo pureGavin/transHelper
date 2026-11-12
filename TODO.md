@@ -2,9 +2,9 @@
 
 ## 阶段 0：开发环境
 
-- [x] 本地 Git 仓库，只在本机提交，不配置远端。
+- [x] 本地 Git 仓库，远端是 GitHub 上的 origin。
 
-  测试：`git remote -v` 无输出。
+  测试：`git remote -v` 显示 `https://github.com/pureGavin/transHelper.git`。
 
 - [x] Go 工具链放在项目内的 `.tools/`，不安装到 C 盘。
 
@@ -104,3 +104,7 @@
 - [x] `x` 按年份计数，月份变化时不从 1 重新开始。
 
   测试：没有 tag 时 `scripts\next-version.ps1` 输出 `<年>.<月>.1`。临时打上 `v2026.11.3` 和 `v2025.12.9` 后输出 `2026.11.4`，说明往年的 tag 不参与计数。测完删除这两个临时 tag。
+
+- [x] 历史里的内网地址已替换，提交邮箱是 `puregavin@foxmail.com`。
+
+  测试：`git log -p main` 里没有私网 IP；`git log main --format="%ae %ce"` 只有 `puregavin@foxmail.com`。

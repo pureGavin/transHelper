@@ -17,7 +17,7 @@
 - `.tools/` 丢失或刚克隆仓库后，运行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup.ps1`。
 - 不 vendor 依赖，版本由 `go.mod` 和 `go.sum` 锁定。
 - `go-winres` 由 `go.mod` 的 `tool` 指令锁定，用 `go tool go-winres` 调用，不安装到系统目录。
-- 发布包用 `scripts\build.ps1` 构建，产物在 `dist/`。
+- 发布包用 `scripts\build.ps1` 构建，产物在 `dist/`。推送到 main 后，GitHub Actions 用同一套脚本构建正式 Release，不把 `.tools/` 或 `dist/` 提交上去。
 
 ## 代码与注释
 
@@ -25,12 +25,14 @@
 - Win32 调用、按键时序、边界情况等看代码看不出原因的地方，用中文注释写明原因。
 - Win32 调用只放在 `internal/win`。热键解析、配置、翻译和流程编排都不引用它，方便单测。
 - 模型密钥只写在被 Git 忽略的 `transhelper.toml`。`transhelper.example.toml` 的 `api_key` 留空。
+- 示例配置和测试里不写内网地址，用 `http://localhost:8000/v1` 这样的占位地址。
 - `.ps1` 用带 BOM 的 UTF-8 保存：Windows PowerShell 5.1 读无 BOM 的文件时按系统代码页解码，中文会乱码。Go 源码用无 BOM 的 UTF-8。
 - 全仓库行尾统一 LF，见 `.gitattributes`。构建产物输出到 `dist/`，该目录已被忽略。
 
 ## 目录
 
-- `scripts/`：安装 Go、设置当前会话环境，以及构建发布包的脚本。
+- `scripts/`：安装 Go、设置当前会话环境、构建发布包，以及计算下一个版本号。
+- `.github/workflows/`：推送到 main 后构建并发布 Release。
 - `cmd/transhelper/`：正式程序入口。
 - `cmd/transhelper/winres/`：图标、清单和版本信息资源。
 - `cmd/trytranslate/`：用真实模型翻译样例句。
@@ -51,7 +53,8 @@
 
 ## Git
 
-- 只做本地提交，不配置远端。提交身份已写在本仓库的本地配置里，不要改全局。
+- 远端 `origin` 是 `https://github.com/pureGavin/transHelper.git`。提交身份写在本仓库的本地配置里，邮箱是 `puregavin@foxmail.com`，不要改全局 Git 配置。
+- 每完成一次提交，都用 AskQuestion 询问是否推送到 GitHub，并说明推送 `main` 会触发一次 Release。没有得到同意就不推送，也不强推。
 - 提交用显式路径 `git add <路径>`，不用 `git add -A`。每个里程碑提交一次，方便 `git revert` 或 `git reset` 回滚。
 - `.gitignore` 是黑名单：出现新的杂项文件，先补忽略规则，再提交。
 - 提交信息用中文：第一行概括改了什么，空一行后写清楚为什么改，包括动机、要解决的问题、取舍。例如：
