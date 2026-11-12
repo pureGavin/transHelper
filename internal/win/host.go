@@ -98,7 +98,7 @@ func (h *host) start() error {
 	if err := h.createWindow(); err != nil {
 		return err
 	}
-	h.icon = loadAppIcon()
+	h.icon = loadAppIcon(h.instance)
 	h.taskbarMsg = registerMessage("TaskbarCreated")
 	h.addTray()
 	if err := h.installHook(); err != nil {
@@ -455,8 +455,25 @@ func (h *host) showMenu() {
 	}
 }
 
-func loadAppIcon() uintptr {
-	r, _, _ := procLoadIcon.Call(0, idiApplication)
+// loadAppIcon 优先用 exe 里名为 APP 的图标。
+// go run 编出来的程序没有这份资源，加载失败时退回系统自带图标。
+func loadAppIcon(instance windows.Handle) uintptr {
+	cx, _, _ := procGetSystemMetrics.Call(smCxSmIcon)
+	cy, _, _ := procGetSystemMetrics.Call(smCySmIcon)
+	name := utf16String("APP")
+	r, _, _ := procLoadImage.Call(
+		uintptr(instance),
+		uintptr(unsafe.Pointer(&name[0])),
+		imageIcon,
+		cx,
+		cy,
+		lrShared,
+	)
+	runtime.KeepAlive(name)
+	if r != 0 {
+		return r
+	}
+	r, _, _ = procLoadIcon.Call(0, idiApplication)
 	return r
 }
 

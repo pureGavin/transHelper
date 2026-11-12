@@ -10,6 +10,7 @@
 # 构建产物
 /dist/
 *.exe
+*.syso
 *.dll
 *.test
 *.out

@@ -79,14 +79,18 @@
 
 ## 阶段 4：打包分发
 
-- [ ] 用 `CGO_ENABLED=0` 和 `-H=windowsgui` 构建到 `dist/`，并附上示例配置。
+- [x] 用 `CGO_ENABLED=0` 和 `-H=windowsgui` 构建到 `dist/`，并附上示例配置。
 
-  测试：在没装 Go 的干净 Windows 虚拟机里双击运行。
+  测试：在没装 Go 的干净 Windows 虚拟机里双击运行。本机没有 `WindowsSandbox.exe`，这一项还没测。
+  本机替代：`scripts\build.ps1` 打出的 zip 解压到临时目录，从资源管理器双击。
+  没有配置时弹出“没有找到 transhelper.toml”，并说明把示例配置复制改名。
+  放上配置后再双击：没有控制台窗口；托盘是紫色“译”图标；日志写入“transHelper 0.1.0 已加载配置”；在“与自己聊天”里按 `Alt+T`，输入框变成英文且没有发送；托盘右键“退出”后日志出现“已退出”。
+  文件版本和产品版本是 0.1.0，ProductName 是 transHelper，OriginalFilename 是 transhelper.exe。zip 里只有 exe、示例配置和 README。
 
-- [ ] 在 README 里说明 SmartScreen 和杀毒软件可能出现的提示。
+- [x] 在 README 里说明 SmartScreen 和杀毒软件可能出现的提示。
 
 ## 已确定
 
 - 热键默认是 `Alt+Enter`（翻译并发送）和 `Alt+T`（只翻译），可以在配置里改。
 - 模型地址和模型名写在配置文件里，示例见 [transhelper.example.toml](transhelper.example.toml)。
-- 失败时托盘冒泡并响提示音。托盘图标右键可以退出。自定义图标留到阶段 4。
+- 失败时托盘冒泡并响提示音。托盘图标右键可以退出。自定义图标已完成：紫色对话气泡加白色“译”，打进 exe。

@@ -36,6 +36,8 @@ var (
 	procGetCursorPos               = user32.NewProc("GetCursorPos")
 	procMessageBeep                = user32.NewProc("MessageBeep")
 	procLoadIcon                   = user32.NewProc("LoadIconW")
+	procLoadImage                  = user32.NewProc("LoadImageW")
+	procGetSystemMetrics           = user32.NewProc("GetSystemMetrics")
 	procRegisterWindowMessage      = user32.NewProc("RegisterWindowMessageW")
 	procOpenClipboard              = user32.NewProc("OpenClipboard")
 	procCloseClipboard             = user32.NewProc("CloseClipboard")
@@ -123,6 +125,10 @@ const (
 	// notifyIconVersion 用旧版回调：lParam 直接是鼠标消息，处理起来不容易和版本 4 的打包格式搞混。
 	notifyIconVersion = 3
 	idiApplication    = 32512
+	imageIcon         = 1
+	lrShared          = 0x00008000
+	smCxSmIcon        = 49
+	smCySmIcon        = 50
 	mfString          = 0
 	tpmReturnCmd      = 0x0100
 	menuExit          = 1

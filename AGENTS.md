@@ -16,6 +16,8 @@
 - 终端里运行任何 Go 命令前，先在项目根目录执行 `. .\scripts\env.ps1`。它只影响当前会话，可重复执行。
 - `.tools/` 丢失或刚克隆仓库后，运行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup.ps1`。
 - 不 vendor 依赖，版本由 `go.mod` 和 `go.sum` 锁定。
+- `go-winres` 由 `go.mod` 的 `tool` 指令锁定，用 `go tool go-winres` 调用，不安装到系统目录。
+- 发布包用 `scripts\build.ps1` 构建，产物在 `dist/`。
 
 ## 代码与注释
 
@@ -28,8 +30,9 @@
 
 ## 目录
 
-- `scripts/`：安装 Go 和设置当前会话环境的脚本。
+- `scripts/`：安装 Go、设置当前会话环境，以及构建发布包的脚本。
 - `cmd/transhelper/`：正式程序入口。
+- `cmd/transhelper/winres/`：图标、清单和版本信息资源。
 - `cmd/trytranslate/`：用真实模型翻译样例句。
 - `internal/config/`：读取 TOML 配置。
 - `internal/hotkey/`：热键字符串解析。

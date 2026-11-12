@@ -4,7 +4,7 @@
 
 ## 状态
 
-开发中。Teams 里的端到端测试已经通过，正式打包还没做。进度见 [TODO.md](TODO.md)。
+0.1.0 可以打包分发。Teams 里的端到端测试已经通过。进度见 [TODO.md](TODO.md)。
 
 ## 功能
 
@@ -12,7 +12,7 @@
 - 只在白名单进程处于前台时注册热键，默认是新版和经典版 Teams。
 - 模型走 OpenAI 兼容接口，地址和模型名放在配置文件里。
 - 超时、报错或空文本时不粘贴、不发送，保留原文，托盘冒泡并响一声。
-- 纯 Go 静态编译，一个 exe 加一个配置文件即可分发。托盘图标目前用系统自带图标。
+- 纯 Go 静态编译，一个 exe 加一个配置文件即可分发。托盘图标是紫色对话气泡和白色“译”字。
 
 ## 运行
 
@@ -23,9 +23,39 @@
 go run ./cmd/transhelper -config transhelper.toml
 ```
 
-不写 `-config` 时，程序读取 exe 同目录的 `transhelper.toml`。正式打包是阶段 4 的事，开发时用上面的命令即可。
+不写 `-config` 时，程序读取 exe 同目录的 `transhelper.toml`。下载后的用法见下一节，自己构建见“构建发布包”。
 
-程序没有主窗口，任务栏托盘里有图标，右键选择“退出”。同一时间只能运行一个实例。日志写在 exe 旁边的 `transhelper.log`，开发时也会打到终端。日志只记错误、耗时和字数，不记消息内容。
+程序没有主窗口，任务栏托盘里有图标，右键选择“退出”。同一时间只能运行一个实例。日志写在 exe 旁边的 `transhelper.log`。开发时如果有控制台，同样的内容也会打到终端；正式包没有控制台，只写文件。日志只记错误、耗时和字数，不记消息内容。
+
+## 下载使用
+
+1. 解压 `transhelper-<版本>-windows-amd64.zip`。
+2. 把同目录的 `transhelper.example.toml` 复制一份，改名为 `transhelper.toml`，填好模型地址和密钥。
+3. 双击 `transhelper.exe`。没有黑色控制台窗口，托盘里出现图标。
+4. 在 Teams 输入框里按 `Alt+T` 或 `Alt+Enter`。
+5. 退出：在托盘图标上右键，选择“退出”。
+
+找不到 `transhelper.toml` 时会弹出说明，不会静默退出。日志在 exe 旁边的 `transhelper.log`。
+
+未签名程序第一次运行时，Windows 和杀毒软件可能拦截，见“SmartScreen 与杀毒软件”。
+
+## 构建发布包
+
+在项目根目录执行。默认版本号是 `0.1.0`。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Version 0.1.0
+```
+
+脚本会先跑 `gofmt`、`go vet` 和 `go test`，再打进图标和版本信息，用 `-H=windowsgui` 编出没有控制台的 exe。产物：
+
+- `dist\transhelper\transhelper.exe`，旁边还有示例配置和 README
+- `dist\transhelper-<版本>-windows-amd64.zip`
+
+zip 里只有这三个文件。即使把带密钥的 `transhelper.toml` 放进 `dist\transhelper\`，它也不会进 zip。脚本结束时打印 exe 和 zip 的 SHA256。不用 UPX 压缩，压缩过的 exe 更容易被杀毒软件误报。
+
+`dist\transhelper\transhelper.exe` 正在运行时脚本会中止，先从托盘退出再构建。
 
 ## 开发环境
 
@@ -64,10 +94,25 @@ go run ./cmd/trytranslate -config transhelper.toml
 
 样例句在 `testdata/samples.txt`，条目之间用单独一行的 `---` 分隔。
 
+## SmartScreen 与杀毒软件
+
+exe 没有代码签名。第一次运行时，Windows 可能提示“Windows 已保护你的电脑”。点“更多信息”，再点“仍要运行”。也可以在解压前打开 zip 的属性，勾选“解除锁定”。
+
+杀毒软件可能把程序标成可疑。它会模拟按键、读写剪贴板，用来读取和替换 Teams 输入框里的文字，但不会安装键盘钩子，也不会改系统设置。
+
+被拦截时，先把文件的 SHA256 和构建脚本打印的值对一下。确认一致后再让杀毒软件信任它，或者自己从源码构建。也可以向杀毒厂商提交误报。
+
+## 已知限制
+
+- 拼音候选框还开着时，`Alt+Enter` 不会把消息发出去，但回车会被输入法吃掉，没上屏的拼音可能粘在译文后面。`Alt+T` 只替换已经上屏的文字。程序不会先按 Esc 取消组字：没有组字时，Esc 在 Teams 里可能关掉回复框。
+- Teams 把输入框里的一个空行复制出来是四个换行。写回后显示仍是一个空行。
+- 大约 390 字的消息，在 Teams 里翻译大约要 14 秒。默认超时是 20 秒，更长的消息可以在配置里把 `timeout_seconds` 调大。
+
 ## 目录
 
-- `scripts/`：安装 Go 和设置当前会话环境的脚本。
+- `scripts/`：安装 Go、设置当前会话环境，以及 `build.ps1` 构建发布包。
 - `cmd/transhelper/`：正式程序。加载配置、保证单实例、写日志、跑消息循环。
+- `cmd/transhelper/winres/`：图标、清单和版本信息资源。
 - `cmd/trytranslate/`：用真实模型翻译样例句。
 - `internal/app/`：一次热键的流程编排，不调用 Win32。
 - `internal/win/`：窗口、热键、剪贴板、托盘等全部 Win32 调用。

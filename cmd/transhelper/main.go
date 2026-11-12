@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -19,6 +20,9 @@ import (
 	"transhelper/internal/translate"
 	"transhelper/internal/win"
 )
+
+// version 由构建脚本用 -X 写入。开发时保持 dev。
+var version = "dev"
 
 func main() {
 	// 窗口、热键和剪贴板都绑在创建它们的线程上。
@@ -37,11 +41,14 @@ func main() {
 	}
 	cfg, err := config.Load(path)
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			fatal(fmt.Errorf("没有找到 %s。把同目录的 transhelper.example.toml 复制一份并改名为 transhelper.toml，填好模型地址和密钥后再运行。", path))
+		}
 		fatal(err)
 	}
 
 	logger := newLogger()
-	logger.Printf("已加载配置 %s，模型 %s", path, cfg.Model)
+	logger.Printf("transHelper %s 已加载配置 %s，模型 %s", version, path, cfg.Model)
 
 	release, already, err := acquireInstance()
 	if err != nil {
@@ -67,7 +74,9 @@ func main() {
 }
 
 func newLogger() *log.Logger {
-	writers := []io.Writer{os.Stderr}
+	// 先写文件。-H=windowsgui 的程序没有控制台，os.Stderr 的句柄是无效的。
+	// MultiWriter 一旦某个 Writer 失败就不再写后面的，stderr 放在前面会让日志文件一直是空的。
+	var writers []io.Writer
 	exe, err := os.Executable()
 	if err == nil {
 		path := filepath.Join(filepath.Dir(exe), "transhelper.log")
@@ -75,6 +84,12 @@ func newLogger() *log.Logger {
 		if openErr == nil {
 			writers = append(writers, file)
 		}
+	}
+	if _, statErr := os.Stderr.Stat(); statErr == nil {
+		writers = append(writers, os.Stderr)
+	}
+	if len(writers) == 0 {
+		writers = append(writers, io.Discard)
 	}
 	return log.New(io.MultiWriter(writers...), "", log.LstdFlags)
 }
