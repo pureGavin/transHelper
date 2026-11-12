@@ -39,7 +39,7 @@
 - `cmd/transhelper/winres/`：图标、清单和版本信息资源。
 - `cmd/trytranslate/`：用真实模型翻译样例句。
 - `internal/config/`：读取和写回 TOML 配置。默认内容在 `template.toml`。
-- `internal/update/`：查询 GitHub Release 并比较版本号。
+- `internal/update/`：查询 GitHub Release、校验安装包并替换 exe。
 - `internal/hotkey/`：热键字符串解析。
 - `internal/translate/`：翻译客户端。
 - `internal/app/`：一次热键的流程编排。

@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"os/exec"
 	"runtime"
 
 	"golang.org/x/sys/windows"
@@ -18,6 +19,7 @@ import (
 	"transhelper/internal/app"
 	"transhelper/internal/config"
 	"transhelper/internal/translate"
+	"transhelper/internal/update"
 	"transhelper/internal/win"
 )
 
@@ -46,6 +48,14 @@ func main() {
 
 	logger := newLogger()
 	logger.Printf("transHelper %s 已加载配置 %s，模型 %s", version, path, cfg.Model)
+	// 新进程用环境变量得知自己是刚更新完的。清掉它，避免以后再启动时重复提示。
+	justUpdated := os.Getenv("TRANSHELPER_UPDATED") == "1"
+	_ = os.Unsetenv("TRANSHELPER_UPDATED")
+	if justUpdated {
+		if exe, err := os.Executable(); err == nil {
+			go update.RemoveOld(exe)
+		}
+	}
 
 	release, already, err := acquireInstance()
 	if err != nil {
@@ -55,18 +65,45 @@ func main() {
 		messageBox("transHelper 已在运行。")
 		return
 	}
-	defer release()
+	var closed bool
+	closeInstance := func() {
+		if closed {
+			return
+		}
+		closed = true
+		release()
+	}
+	defer closeInstance()
 
-	if err := win.Run(context.Background(), win.Options{
+	restart, err := win.Run(context.Background(), win.Options{
 		ConfigPath:    path,
 		Config:        cfg,
 		Version:       version,
 		FirstRun:      firstRun,
+		Updated:       justUpdated,
 		Logger:        logger,
 		NewTranslator: newTranslator,
-	}); err != nil {
+	})
+	if err != nil {
 		logger.Printf("退出: %v", err)
 		fatal(err)
+	}
+	if !restart {
+		return
+	}
+	// 新进程要拿到单实例锁，所以先放开，再启动替换后的 exe。
+	closeInstance()
+	if err := relaunch(path); err != nil {
+		logger.Printf("启动新版本失败: %v", err)
+		if exe, exeErr := os.Executable(); exeErr == nil {
+			if rerr := update.Restore(exe); rerr != nil {
+				logger.Printf("恢复旧版本失败: %v", rerr)
+				messageBox("新版本没有启动，恢复旧版本也失败。请从发布页重新下载。")
+				os.Exit(1)
+			}
+		}
+		messageBox("新版本没有启动，已恢复旧版本，请重新打开")
+		os.Exit(1)
 	}
 }
 
@@ -102,6 +139,17 @@ func newTranslator(cfg config.Config) app.Translator {
 		Temperature: cfg.Temperature,
 		Prompt:      cfg.SystemPrompt,
 	}
+}
+
+// relaunch 启动已经替换好的 exe。环境变量告诉新进程这次是更新完成。
+func relaunch(configPath string) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(exe, "-config", configPath)
+	cmd.Env = append(os.Environ(), "TRANSHELPER_UPDATED=1")
+	return cmd.Start()
 }
 
 func newLogger() *log.Logger {

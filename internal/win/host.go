@@ -45,6 +45,8 @@ type Options struct {
 	Logger *log.Logger
 	// NewTranslator 按配置创建翻译客户端。应用设置时会再调用一次。
 	NewTranslator func(config.Config) app.Translator
+	// Updated 表示这次启动是刚刚完成的自动更新。
+	Updated bool
 }
 
 type host struct {
@@ -77,31 +79,38 @@ type host struct {
 	updateMu        sync.Mutex
 	updateQueue     []updateOutcome
 	checking        atomic.Bool
-	balloonURL      string
+	updating        atomic.Bool
+	clickAction     trayAction
 	notifiedVersion string
 	autoCancel      context.CancelFunc
+	restart         bool
+	updated         bool
+
+	installMu    sync.Mutex
+	installQueue []installOutcome
 
 	settings *settingsWindow
 }
 
 // notice 是一条待显示的托盘通知。info 为 true 时不响提示音。
 type notice struct {
-	text string
-	info bool
-	url  string
+	text   string
+	info   bool
+	action trayAction
 }
 
 // Run 创建隐藏窗口、托盘和热键，直到用户退出。
-func Run(parent context.Context, opts Options) error {
+// restart 为 true 时，调用方应在释放单实例锁后启动替换好的新程序。
+func Run(parent context.Context, opts Options) (bool, error) {
 	if opts.Logger == nil {
 		opts.Logger = log.New(io.Discard, "", 0)
 	}
 	if opts.NewTranslator == nil {
-		return fmt.Errorf("没有翻译客户端")
+		return false, fmt.Errorf("没有翻译客户端")
 	}
 	translator := opts.NewTranslator(opts.Config)
 	if translator == nil {
-		return fmt.Errorf("没有翻译客户端")
+		return false, fmt.Errorf("没有翻译客户端")
 	}
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -111,6 +120,7 @@ func Run(parent context.Context, opts Options) error {
 		configPath:    opts.ConfigPath,
 		version:       opts.Version,
 		firstRun:      opts.FirstRun,
+		updated:       opts.Updated,
 		newTranslator: opts.NewTranslator,
 		logger:        opts.Logger,
 		ctx:           ctx,
@@ -130,7 +140,7 @@ func Run(parent context.Context, opts Options) error {
 
 	if err := h.start(); err != nil {
 		h.cleanup()
-		return err
+		return false, err
 	}
 	go h.watchInterrupt()
 	h.loop()
@@ -138,7 +148,7 @@ func Run(parent context.Context, opts Options) error {
 	h.waitBusy(3 * time.Second)
 	h.cleanup()
 	h.logger.Printf("已退出")
-	return nil
+	return h.restart, nil
 }
 
 func (h *host) start() error {
@@ -156,6 +166,9 @@ func (h *host) start() error {
 	if h.firstRun {
 		h.Notify("已创建配置文件，请填写模型地址")
 		h.openSettings()
+	}
+	if h.updated {
+		h.info("已更新到版本 " + h.version)
 	}
 	h.syncAutoCheck()
 	return nil
@@ -314,8 +327,8 @@ func wndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 		case ninBalloonUserClick:
 			h.openBalloon()
 		case ninBalloonTimeout, ninBalloonHide:
-			// 气泡已经消失，不能再把下一次点击算到旧的下载页上。
-			h.balloonURL = ""
+			// 气泡已经消失，不能再把下一次点击算到旧的动作上。
+			h.clickAction = trayAction{}
 		}
 		return 0
 	case wmShowNotify:
@@ -323,6 +336,9 @@ func wndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 		return 0
 	case wmUpdateResult:
 		h.onUpdateResult()
+		return 0
+	case wmInstallReady:
+		h.onInstallReady()
 		return 0
 	case wmClose:
 		h.cancel()
@@ -348,6 +364,10 @@ func (h *host) onHotkey(id uintptr) {
 	// 即使这次不处理，也要先打断 Alt 或 Win，避免松开时激活菜单或开始菜单。
 	maskAltWin()
 	if h.ctx.Err() != nil {
+		return
+	}
+	if h.updating.Load() {
+		h.info("正在更新")
 		return
 	}
 	if !h.busy.CompareAndSwap(false, true) {
@@ -437,8 +457,12 @@ func (h *host) Notify(message string) {
 	h.enqueue(notice{text: message})
 }
 
-func (h *host) info(message, link string) {
-	h.enqueue(notice{text: message, info: true, url: link})
+func (h *host) info(message string) {
+	h.enqueue(notice{text: message, info: true})
+}
+
+func (h *host) infoAction(message string, action trayAction) {
+	h.enqueue(notice{text: message, info: true, action: action})
 }
 
 func (h *host) enqueue(item notice) {
@@ -459,11 +483,7 @@ func (h *host) flushNotify() {
 	h.pending = nil
 	h.notifyMu.Unlock()
 	for _, item := range items {
-		if item.url != "" {
-			h.balloonURL = item.url
-		} else {
-			h.balloonURL = ""
-		}
+		h.clickAction = item.action
 		h.balloon(item.text)
 		if !item.info {
 			procMessageBeep.Call(mbIconWarning)

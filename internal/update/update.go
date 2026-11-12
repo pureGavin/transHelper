@@ -1,4 +1,4 @@
-// Package update 查询 GitHub Release 并比较版本号。它不调用 Win32。
+// Package update 查询 GitHub Release，并下载、校验、替换程序。它不调用 Win32。
 package update
 
 import (
@@ -26,13 +26,47 @@ const (
 // ErrNoRelease 表示仓库还没有任何正式版。
 var ErrNoRelease = errors.New("还没有正式版本")
 
+const (
+	// MaxZipBytes 是可下载安装包的上限。
+	MaxZipBytes = 64 << 20
+	// MaxExeBytes 是解压出的 exe 的上限。
+	MaxExeBytes = 128 << 20
+)
+
+// Asset 是 Release 上可用于自动更新的 zip。零值表示没有合格附件。
+type Asset struct {
+	Name   string
+	URL    string
+	Size   int64
+	SHA256 string
+}
+
+// Available 报告附件是否可以下载安装。
+func (a Asset) Available() bool {
+	return a.Name != "" && a.URL != "" && a.Size > 0 && a.SHA256 != ""
+}
+
 // Release 是 GitHub 上的一个正式版本。
 type Release struct {
 	// Version 不带前导 v，例如 2026.11.1。
 	Version string
 	// URL 是这个版本的 Release 页面。
 	URL string
+	// Asset 是自动更新用的 zip。没有合格附件时为零值。
+	Asset Asset
 }
+
+// Action 是点击更新通知后要做的事。
+type Action int
+
+const (
+	// ActionNone 表示通知不能点击。
+	ActionNone Action = iota
+	// ActionOpen 表示打开 Release 页面。
+	ActionOpen
+	// ActionInstall 表示下载并替换当前程序。
+	ActionInstall
+)
 
 type version struct {
 	year  int
@@ -100,43 +134,46 @@ func parseVersion(v string) (version, error) {
 	return version{year: year, month: month, patch: patch}, nil
 }
 
-// Describe 决定这次检查要不要通知用户。
+// Describe 决定这次检查要不要通知用户，以及点击通知后做什么。
 // manual 为 false 时，只有发现更新的正式版才通知。
 // already 是本轮运行里自动检查已经提示过的版本，同一个版本不再重复提示。
-// page 非空时，点击通知应打开这个 Release 页面。
-func Describe(current string, manual bool, already string, rel Release, err error) (message, page string, show bool) {
+// 有合格安装包时动作为安装；没有时退回打开下载页。本机构建只说明，不带动作。
+func Describe(current string, manual bool, already string, rel Release, err error) (message string, action Action, show bool) {
 	if err != nil {
 		if !manual {
-			return "", "", false
+			return "", ActionNone, false
 		}
 		if errors.Is(err, ErrNoRelease) {
-			return "还没有已发布的版本", "", true
+			return "还没有已发布的版本", ActionNone, true
 		}
-		return "检查更新失败，请检查网络", "", true
+		return "检查更新失败，请检查网络", ActionNone, true
 	}
 	if !IsRelease(current) {
 		if !manual {
-			return "", "", false
+			return "", ActionNone, false
 		}
-		return fmt.Sprintf("当前是本机构建 %s，最新正式版是 %s", current, rel.Version), rel.URL, true
+		return fmt.Sprintf("当前是本机构建 %s，最新正式版是 %s", current, rel.Version), ActionNone, true
 	}
 	cmp, cmpErr := Compare(rel.Version, current)
 	if cmpErr != nil {
 		if !manual {
-			return "", "", false
+			return "", ActionNone, false
 		}
-		return "检查更新失败，请检查网络", "", true
+		return "检查更新失败，请检查网络", ActionNone, true
 	}
 	if cmp <= 0 {
 		if !manual {
-			return "", "", false
+			return "", ActionNone, false
 		}
-		return "已是最新版本 " + current, "", true
+		return "已是最新版本 " + current, ActionNone, true
 	}
 	if !manual && already == rel.Version {
-		return "", "", false
+		return "", ActionNone, false
 	}
-	return "发现新版本 " + rel.Version + "，点击打开下载页", rel.URL, true
+	if rel.Asset.Available() {
+		return "发现新版本 " + rel.Version + "，点击这里更新", ActionInstall, true
+	}
+	return "发现新版本 " + rel.Version + "，点击打开下载页", ActionOpen, true
 }
 
 // AllowedPage 报告 raw 是不是本仓库的 GitHub Release 页面。
@@ -152,8 +189,16 @@ func AllowedPage(raw string) bool {
 }
 
 type releasePayload struct {
-	TagName string `json:"tag_name"`
-	HTMLURL string `json:"html_url"`
+	TagName string         `json:"tag_name"`
+	HTMLURL string         `json:"html_url"`
+	Assets  []assetPayload `json:"assets"`
+}
+
+type assetPayload struct {
+	Name               string `json:"name"`
+	Size               int64  `json:"size"`
+	BrowserDownloadURL string `json:"browser_download_url"`
+	Digest             string `json:"digest"`
 }
 
 // Latest 请求最新正式版。client 为空时使用 10 秒超时的客户端。
@@ -213,8 +258,49 @@ func Latest(ctx context.Context, client *http.Client, rawURL, userAgent string) 
 	if !AllowedPage(payload.HTMLURL) {
 		return Release{}, fmt.Errorf("Release 页面地址不可用")
 	}
+	versionText := fmt.Sprintf("%04d.%02d.%d", parsed.year, parsed.month, parsed.patch)
 	return Release{
-		Version: fmt.Sprintf("%04d.%02d.%d", parsed.year, parsed.month, parsed.patch),
+		Version: versionText,
 		URL:     payload.HTMLURL,
+		Asset:   selectAsset(versionText, payload.Assets),
 	}, nil
+}
+
+// selectAsset 挑出可以自动安装的 zip。不合格的附件会被跳过。
+func selectAsset(version string, assets []assetPayload) Asset {
+	wantName := "transHelper-" + version + "-windows-amd64.zip"
+	prefix := "https://github.com/pureGavin/transHelper/releases/download/v" + version + "/"
+	for _, item := range assets {
+		if item.Name != wantName || !strings.HasPrefix(item.BrowserDownloadURL, prefix) {
+			continue
+		}
+		sum, ok := parseDigest(item.Digest)
+		if !ok || item.Size <= 0 || item.Size > MaxZipBytes {
+			continue
+		}
+		return Asset{
+			Name:   item.Name,
+			URL:    item.BrowserDownloadURL,
+			Size:   item.Size,
+			SHA256: sum,
+		}
+	}
+	return Asset{}
+}
+
+func parseDigest(digest string) (string, bool) {
+	const prefix = "sha256:"
+	if !strings.HasPrefix(digest, prefix) {
+		return "", false
+	}
+	sum := strings.ToLower(digest[len(prefix):])
+	if len(sum) != 64 {
+		return "", false
+	}
+	for _, c := range sum {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return "", false
+		}
+	}
+	return sum, true
 }

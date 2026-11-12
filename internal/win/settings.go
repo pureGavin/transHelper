@@ -537,7 +537,7 @@ func (s *settingsWindow) apply() {
 	}
 	h.applyConfig(loaded)
 	s.close()
-	h.info("应用设置成功", "")
+	h.info("应用设置成功")
 }
 
 func (h *host) applyConfig(cfg config.Config) {
