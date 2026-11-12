@@ -29,6 +29,8 @@
 *.local.*
 *.pem
 *.key
+# 含有模型密钥，只入库 transhelper.example.toml
+/transhelper.toml
 
 # 编辑器、IDE 和 AI 工具的本地状态
 # .cursor 只跟踪 rules 和 skills；调试日志、plans 等留在本地

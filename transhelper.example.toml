@@ -1,0 +1,26 @@
+# transHelper 配置示例。复制为 transhelper.toml 后按自己的环境修改。
+# transhelper.toml 含有密钥，不会进入 Git。
+
+[model]
+# OpenAI 兼容接口的地址，末尾的 /v1 要保留。
+base_url = "http://localhost:8000/v1"
+model = "Qwen/Qwen3.6-35B-A3B"
+# 不需要密钥时留空。
+api_key = ""
+# 单次翻译的超时，单位秒。超时后不改动输入框。
+timeout_seconds = 20
+temperature = 0.2
+# 留空则使用程序内置的提示词。
+system_prompt = ""
+
+[hotkeys]
+# 至少带 Ctrl、Alt、Win 中的一个，避免影响正常打字。
+# translate_and_send：翻译后替换输入框内容并回车发送。
+# translate_only：只替换输入框内容，不发送。
+translate_and_send = "Alt+Enter"
+translate_only = "Alt+T"
+
+[target]
+# 只有这些进程在前台时热键才生效。不区分大小写。
+# ms-teams.exe 是新版 Teams，Teams.exe 是经典版。
+processes = ["ms-teams.exe", "Teams.exe"]
