@@ -80,6 +80,8 @@ type host struct {
 	balloonURL      string
 	notifiedVersion string
 	autoCancel      context.CancelFunc
+
+	settings *settingsWindow
 }
 
 // notice 是一条待显示的托盘通知。info 为 true 时不响提示音。
@@ -153,6 +155,7 @@ func (h *host) start() error {
 	h.logger.Printf("已启动，前台是白名单进程时热键才会生效")
 	if h.firstRun {
 		h.Notify("已创建配置文件，请填写模型地址")
+		h.openSettings()
 	}
 	h.syncAutoCheck()
 	return nil
@@ -229,6 +232,18 @@ func (h *host) loop() {
 			h.logger.Printf("GetMessage 失败: %v", err)
 			return
 		}
+		if h.handleSettingsKey(&m) {
+			continue
+		}
+		// 设置窗口不是系统对话框。Tab、Esc 和回车在 handleSettingsKey 里处理。
+		// 其余键盘消息仍交给 IsDialogMessage，让默认按钮能收到回车。
+		if h.settings != nil && h.settings.hwnd != 0 {
+			handled, _, _ := procIsDialogMessage.Call(h.settings.hwnd, uintptr(unsafe.Pointer(&m)))
+			runtime.KeepAlive(&m)
+			if handled != 0 {
+				continue
+			}
+		}
 		procTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
 		procDispatchMessage.Call(uintptr(unsafe.Pointer(&m)))
 		runtime.KeepAlive(&m)
@@ -260,6 +275,10 @@ func (h *host) waitBusy(d time.Duration) {
 }
 
 func (h *host) cleanup() {
+	if h.settings != nil {
+		h.settings.close()
+	}
+	unregisterSettingsClass(h.instance)
 	h.unregisterHotkeys()
 	h.registered = false
 	if h.hook != 0 {
@@ -343,12 +362,14 @@ func (h *host) onHotkey(id uintptr) {
 		which = "翻译并发送"
 	}
 	h.logger.Printf("热键触发：%s", which)
+	// 启动前拷走 runner。应用设置会整体换上新的 runner，不改这个正在用的对象。
+	runner := h.runner
 	go func() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 		defer h.busy.Store(false)
 		ensureMessageQueue()
-		h.runner.Run(h.ctx, action)
+		runner.Run(h.ctx, action)
 	}()
 }
 
@@ -514,6 +535,7 @@ func (h *host) showMenu() {
 		return
 	}
 	defer procDestroyMenu.Call(menu)
+	appendMenuItem(menu, mfString, menuSettings, "设置…")
 	appendMenuItem(menu, mfString, menuCheckUpdate, "检查更新")
 	autoFlags := uintptr(mfString)
 	if h.cfg.AutoCheckUpdate {
@@ -538,6 +560,8 @@ func (h *host) showMenu() {
 		h.checkUpdate(true)
 	case menuAutoCheck:
 		h.toggleAutoCheck()
+	case menuSettings:
+		h.openSettings()
 	}
 }
 

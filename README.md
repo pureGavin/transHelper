@@ -18,7 +18,7 @@
 
 1. 打开 [Releases](https://github.com/pureGavin/transHelper/releases/latest)，下载 `transHelper-YYYY.MM.x-windows-amd64.zip`。
 2. 解压。
-3. 双击 `transhelper.exe`。没有黑色控制台窗口，托盘里出现图标。同目录没有 `transhelper.toml` 时会自动创建，并提示填写模型地址。已有配置不会被覆盖。
+3. 双击 `transhelper.exe`。没有黑色控制台窗口，托盘里出现图标。同目录没有 `transhelper.toml` 时会自动创建，提示填写模型地址，并打开设置窗口。已有配置不会被覆盖。右键托盘图标可以选择「设置…」。
 4. 在 Teams 输入框里按 `Alt+T` 或 `Alt+Enter`。
 5. 退出：在托盘图标上右键，选择“退出”。
 
@@ -29,6 +29,8 @@
 ## 配置
 
 第一次运行会在 exe 同目录创建 `transhelper.toml`。已有文件不会被覆盖。`transhelper.toml` 含有密钥，已被 Git 忽略。新建文件里的地址是占位用的 `http://localhost:8000/v1`，要改成自己的模型服务。程序写回配置时会按内置模板重写整个文件，手写的注释不会保留。
+
+托盘图标右键选择「设置…」可以改模型地址、模型名称、API Key 和超时。鼠标在输入框里停留约 0.8 秒会显示这项配置的作用。API Key 默认遮住，勾选「显示」可以看到。点「应用」后保存并立即生效，右下角通知「应用设置成功」，窗口关闭。点「取消」、关闭按钮或按 Esc 不保存。热键和进程白名单仍在配置文件里改，改完后在设置里点一次「应用」，或者重新启动。
 
 - `model.base_url`、`model.model`：必填。地址是 OpenAI 兼容接口，末尾保留 `/v1`。
 - `model.api_key`：可选，不需要密钥时留空。

@@ -18,6 +18,10 @@ func TestWin32StructSizes(t *testing.T) {
 		{"MSG", unsafe.Sizeof(msg{}), 48},
 		{"WNDCLASSEXW", unsafe.Sizeof(wndClassEx{}), 80},
 		{"NOTIFYICONDATAW", unsafe.Sizeof(notifyIconData{}), 976},
+		{"LOGFONTW", unsafe.Sizeof(logFont{}), 92},
+		{"NONCLIENTMETRICSW", unsafe.Sizeof(nonClientMetrics{}), 504},
+		{"MONITORINFO", unsafe.Sizeof(monitorInfo{}), 40},
+		{"TOOLINFOW", unsafe.Sizeof(toolInfo{}), 72},
 	}
 	for _, check := range checks {
 		if check.got != check.want {

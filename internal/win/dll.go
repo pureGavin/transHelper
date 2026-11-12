@@ -9,6 +9,8 @@ var (
 	user32   = windows.NewLazySystemDLL("user32.dll")
 	kernel32 = windows.NewLazySystemDLL("kernel32.dll")
 	shell32  = windows.NewLazySystemDLL("shell32.dll")
+	gdi32    = windows.NewLazySystemDLL("gdi32.dll")
+	comctl32 = windows.NewLazySystemDLL("comctl32.dll")
 
 	procRegisterHotKey             = user32.NewProc("RegisterHotKey")
 	procUnregisterHotKey           = user32.NewProc("UnregisterHotKey")
@@ -58,6 +60,35 @@ var (
 
 	procShellNotifyIcon = shell32.NewProc("Shell_NotifyIconW")
 	procShellExecute    = shell32.NewProc("ShellExecuteW")
+
+	procIsDialogMessage            = user32.NewProc("IsDialogMessageW")
+	procSetWindowText              = user32.NewProc("SetWindowTextW")
+	procGetWindowText              = user32.NewProc("GetWindowTextW")
+	procGetWindowTextLength        = user32.NewProc("GetWindowTextLengthW")
+	procSendMessage                = user32.NewProc("SendMessageW")
+	procSetFocus                   = user32.NewProc("SetFocus")
+	procGetFocus                   = user32.NewProc("GetFocus")
+	procGetParent                  = user32.NewProc("GetParent")
+	procMoveWindow                 = user32.NewProc("MoveWindow")
+	procGetClientRect              = user32.NewProc("GetClientRect")
+	procGetDpiForWindow            = user32.NewProc("GetDpiForWindow")
+	procSystemParametersInfoForDpi = user32.NewProc("SystemParametersInfoForDpi")
+	procSystemParametersInfo       = user32.NewProc("SystemParametersInfoW")
+	procMonitorFromWindow          = user32.NewProc("MonitorFromWindow")
+	procGetMonitorInfo             = user32.NewProc("GetMonitorInfoW")
+	procSetWindowPos               = user32.NewProc("SetWindowPos")
+	procShowWindow                 = user32.NewProc("ShowWindow")
+	procInvalidateRect             = user32.NewProc("InvalidateRect")
+	procAdjustWindowRectExForDpi   = user32.NewProc("AdjustWindowRectExForDpi")
+	procAdjustWindowRectEx         = user32.NewProc("AdjustWindowRectEx")
+	procGetClassName               = user32.NewProc("GetClassNameW")
+	procGetKeyState                = user32.NewProc("GetKeyState")
+	procGetNextDlgTabItem          = user32.NewProc("GetNextDlgTabItem")
+	procLoadCursor                 = user32.NewProc("LoadCursorW")
+
+	procCreateFontIndirect   = gdi32.NewProc("CreateFontIndirectW")
+	procDeleteObject         = gdi32.NewProc("DeleteObject")
+	procInitCommonControlsEx = comctl32.NewProc("InitCommonControlsEx")
 )
 
 const (
@@ -138,6 +169,7 @@ const (
 	menuCheckUpdate     = 1
 	menuAutoCheck       = 2
 	menuExit            = 3
+	menuSettings        = 4
 	ninBalloonHide      = 0x0403
 	ninBalloonTimeout   = 0x0404
 	ninBalloonUserClick = 0x0405
