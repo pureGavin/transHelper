@@ -3,17 +3,29 @@ package config
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/BurntSushi/toml"
 
 	"transhelper/internal/hotkey"
 )
+
+//go:embed template.toml
+var configTemplate string
+
+var configTmpl = template.Must(template.New("config").Funcs(template.FuncMap{
+	"toml":    tomlString,
+	"seconds": func(d time.Duration) int { return int(d / time.Second) },
+	"temp":    func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) },
+}).Parse(configTemplate))
 
 const (
 	// FileName 是默认配置文件名，放在 exe 同目录。
@@ -49,6 +61,8 @@ type Config struct {
 	TranslateOnly hotkey.Combo
 	// Processes 是前台进程白名单，只保留文件名，比较时不区分大小写。
 	Processes []string
+	// AutoCheckUpdate 为 true 时定期检查 GitHub Release。默认 false。
+	AutoCheckUpdate bool
 }
 
 // DefaultPath 返回 exe 同目录下的配置文件路径。
@@ -84,6 +98,11 @@ type fileConfig struct {
 	Model   modelSection  `toml:"model"`
 	Hotkeys hotkeySection `toml:"hotkeys"`
 	Target  targetSection `toml:"target"`
+	Update  updateSection `toml:"update"`
+}
+
+type updateSection struct {
+	AutoCheck bool `toml:"auto_check"`
 }
 
 type modelSection struct {
@@ -196,5 +215,130 @@ func Parse(data []byte) (Config, error) {
 			cfg.Processes = append(cfg.Processes, name)
 		}
 	}
+	cfg.AutoCheckUpdate = raw.Update.AutoCheck
 	return cfg, nil
+}
+
+const (
+	defaultBaseURL = "http://localhost:8000/v1"
+	defaultModel   = "Qwen/Qwen3.6-35B-A3B"
+)
+
+// Default 返回第一次运行时写入的配置。地址是占位值，密钥为空。
+func Default() Config {
+	send, err := hotkey.Parse("Alt+Enter")
+	if err != nil {
+		panic(err)
+	}
+	only, err := hotkey.Parse("Alt+T")
+	if err != nil {
+		panic(err)
+	}
+	return Config{
+		BaseURL:          defaultBaseURL,
+		Model:            defaultModel,
+		Timeout:          defaultTimeoutSeconds * time.Second,
+		Temperature:      defaultTemperature,
+		TranslateAndSend: send,
+		TranslateOnly:    only,
+		Processes:        append([]string(nil), DefaultProcesses...),
+	}
+}
+
+// Render 按内置模板把 cfg 写成 TOML。字符串里的引号、反斜杠和换行会按 TOML 规则转义。
+func Render(cfg Config) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := configTmpl.Execute(&buf, cfg); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// CreateDefault 在 path 创建默认配置。文件已存在时返回错误，不会覆盖。
+func CreateDefault(path string) error {
+	data, err := Render(Default())
+	if err != nil {
+		return err
+	}
+	// O_EXCL 保证已有配置（可能含密钥）不会被默认内容换掉。
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	_, writeErr := file.Write(data)
+	closeErr := file.Close()
+	if writeErr != nil {
+		os.Remove(path)
+		return writeErr
+	}
+	if closeErr != nil {
+		os.Remove(path)
+		return closeErr
+	}
+	return nil
+}
+
+// Save 校验 cfg 后原子写入 path。手写在文件里的注释会被模板注释替换。
+func Save(path string, cfg Config) error {
+	data, err := Render(cfg)
+	if err != nil {
+		return err
+	}
+	if _, err := Parse(data); err != nil {
+		return fmt.Errorf("配置无效: %w", err)
+	}
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".transhelper-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	_, writeErr := tmp.Write(data)
+	closeErr := tmp.Close()
+	if writeErr != nil {
+		os.Remove(tmpName)
+		return writeErr
+	}
+	if closeErr != nil {
+		os.Remove(tmpName)
+		return closeErr
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return nil
+}
+
+// tomlString 把 s 编码成 TOML 基本字符串，包含两侧引号。
+func tomlString(s string) string {
+	var buf strings.Builder
+	buf.Grow(len(s) + 2)
+	buf.WriteByte('"')
+	for _, r := range s {
+		switch r {
+		case '\\':
+			buf.WriteString(`\\`)
+		case '"':
+			buf.WriteString(`\"`)
+		case '\b':
+			buf.WriteString(`\b`)
+		case '\t':
+			buf.WriteString(`\t`)
+		case '\n':
+			buf.WriteString(`\n`)
+		case '\f':
+			buf.WriteString(`\f`)
+		case '\r':
+			buf.WriteString(`\r`)
+		default:
+			if r < 0x20 {
+				fmt.Fprintf(&buf, `\u%04X`, r)
+			} else {
+				buf.WriteRune(r)
+			}
+		}
+	}
+	buf.WriteByte('"')
+	return buf.String()
 }

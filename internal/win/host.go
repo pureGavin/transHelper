@@ -31,13 +31,33 @@ var (
 	globalHost       *host
 )
 
+// Options 是启动托盘程序所需的配置和依赖。
+type Options struct {
+	// ConfigPath 是配置文件路径。设置和自动检查开关会写回这个文件。
+	ConfigPath string
+	// Config 是已经校验过的配置。
+	Config config.Config
+	// Version 是构建时写入的版本号。开发构建是 dev，本机构建末尾是 .0。
+	Version string
+	// FirstRun 表示这次启动的配置文件是程序刚创建的。
+	FirstRun bool
+	// Logger 为空时不写日志。
+	Logger *log.Logger
+	// NewTranslator 按配置创建翻译客户端。应用设置时会再调用一次。
+	NewTranslator func(config.Config) app.Translator
+}
+
 type host struct {
-	cfg     config.Config
-	logger  *log.Logger
-	ctx     context.Context
-	cancel  context.CancelFunc
-	desktop *Desktop
-	runner  *app.Runner
+	cfg           config.Config
+	configPath    string
+	version       string
+	firstRun      bool
+	newTranslator func(config.Config) app.Translator
+	logger        *log.Logger
+	ctx           context.Context
+	cancel        context.CancelFunc
+	desktop       *Desktop
+	runner        *app.Runner
 
 	hwnd             uintptr
 	instance         windows.Handle
@@ -56,26 +76,37 @@ type host struct {
 }
 
 // Run 创建隐藏窗口、托盘和热键，直到用户退出。
-func Run(parent context.Context, cfg config.Config, translator app.Translator, logger *log.Logger) error {
-	if logger == nil {
-		logger = log.New(io.Discard, "", 0)
+func Run(parent context.Context, opts Options) error {
+	if opts.Logger == nil {
+		opts.Logger = log.New(io.Discard, "", 0)
+	}
+	if opts.NewTranslator == nil {
+		return fmt.Errorf("没有翻译客户端")
+	}
+	translator := opts.NewTranslator(opts.Config)
+	if translator == nil {
+		return fmt.Errorf("没有翻译客户端")
 	}
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 
 	h := &host{
-		cfg:     cfg,
-		logger:  logger,
-		ctx:     ctx,
-		cancel:  cancel,
-		desktop: &Desktop{},
+		cfg:           opts.Config,
+		configPath:    opts.ConfigPath,
+		version:       opts.Version,
+		firstRun:      opts.FirstRun,
+		newTranslator: opts.NewTranslator,
+		logger:        opts.Logger,
+		ctx:           ctx,
+		cancel:        cancel,
+		desktop:       &Desktop{},
 	}
 	h.runner = &app.Runner{
 		Desktop:    h.desktop,
 		Translator: translator,
 		Notifier:   h,
-		Timeout:    cfg.Timeout,
-		Log:        logger,
+		Timeout:    opts.Config.Timeout,
+		Log:        opts.Logger,
 	}
 	// 窗口过程在 CreateWindowEx 返回前就会被调用，所以要先放好。
 	globalHost = h
@@ -106,6 +137,9 @@ func (h *host) start() error {
 	}
 	h.syncHotkeys()
 	h.logger.Printf("已启动，前台是白名单进程时热键才会生效")
+	if h.firstRun {
+		h.Notify("已创建配置文件，请填写模型地址")
+	}
 	return nil
 }
 

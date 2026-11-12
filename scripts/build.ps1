@@ -1,4 +1,4 @@
-﻿# 构建发布包：无控制台窗口的 exe、示例配置和说明，再打成 zip。
+﻿# 构建发布包：无控制台窗口的 exe 和说明，再打成 zip。
 # 用法：powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 [-Version 2026.11.1]
 # 不传 -Version 时用当前北京时间的年月，x 固定为 0，用来和正式发布区分。
 # 不用 UPX。压缩过的 exe 更容易被杀毒软件误报。
@@ -77,7 +77,6 @@ if ($LASTEXITCODE -ne 0) {
     throw "go build 失败，退出码 $LASTEXITCODE"
 }
 
-Copy-Item -LiteralPath (Join-Path $root "transhelper.example.toml") -Destination (Join-Path $outDir "transhelper.example.toml") -Force
 Copy-Item -LiteralPath (Join-Path $root "README.md") -Destination (Join-Path $outDir "README.md") -Force
 
 $zip = Join-Path $root ("dist\transHelper-{0}-windows-amd64.zip" -f $Version)
@@ -87,7 +86,6 @@ if (Test-Path -LiteralPath $zip) {
 # 按文件清单打包，不把目录里可能存在的 transhelper.toml（含密钥）放进去。
 Compress-Archive -LiteralPath @(
     $exe,
-    (Join-Path $outDir "transhelper.example.toml"),
     (Join-Path $outDir "README.md")
 ) -DestinationPath $zip
 

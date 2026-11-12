@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"transhelper/internal/hotkey"
 )
 
 func TestParseDefaults(t *testing.T) {
@@ -46,6 +48,9 @@ model = " demo "
 	}
 	if cfg.AllowsProcess("notepad.exe") {
 		t.Fatal("记事本不应该在默认白名单里")
+	}
+	if cfg.AutoCheckUpdate {
+		t.Fatal("未写 update.auto_check 时应该关闭自动检查")
 	}
 }
 
@@ -214,9 +219,8 @@ timeout = 5
 	}
 }
 
-func TestParseExampleFile(t *testing.T) {
-	path := filepath.Join("..", "..", "transhelper.example.toml")
-	data, err := os.ReadFile(path)
+func TestDefaultTemplate(t *testing.T) {
+	data, err := Render(Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +235,7 @@ func TestParseExampleFile(t *testing.T) {
 		t.Fatalf("Model = %q", cfg.Model)
 	}
 	if cfg.APIKey != "" {
-		t.Fatal("示例配置不应该带密钥")
+		t.Fatal("默认配置不应该带密钥")
 	}
 	if cfg.Timeout != 20*time.Second || cfg.Temperature != 0.2 {
 		t.Fatalf("Timeout=%s Temperature=%v", cfg.Timeout, cfg.Temperature)
@@ -241,6 +245,126 @@ func TestParseExampleFile(t *testing.T) {
 	}
 	if !cfg.AllowsProcess("ms-teams.exe") || !cfg.AllowsProcess("Teams.exe") {
 		t.Fatalf("Processes = %#v", cfg.Processes)
+	}
+	if cfg.AutoCheckUpdate {
+		t.Fatal("默认不应该自动检查更新")
+	}
+	if strings.Contains(string(data), "192.168.") || strings.Contains(cfg.BaseURL, "192.168.") {
+		t.Fatal("默认配置不应该写内网地址")
+	}
+}
+
+func TestRenderRoundTrip(t *testing.T) {
+	cfg := Default()
+	cfg.APIKey = "key \"quoted\" \\ slash"
+	cfg.SystemPrompt = "第一行\n第二行 \"引号\" \\ 反斜杠 \t制表"
+	cfg.Model = "org/name"
+	cfg.BaseURL = "https://localhost:8000/v1"
+	cfg.Timeout = 15 * time.Second
+	cfg.Temperature = 0
+	cfg.AutoCheckUpdate = true
+	cfg.Processes = []string{"ms-teams.exe", "Teams.exe"}
+	only, err := hotkey.Parse("Ctrl+Alt+T")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.TranslateOnly = only
+
+	data, err := Render(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Parse(data)
+	if err != nil {
+		t.Fatalf("解析渲染结果: %v\n%s", err, data)
+	}
+	if got.APIKey != cfg.APIKey || got.SystemPrompt != cfg.SystemPrompt {
+		t.Fatalf("字符串没有原样回来: key=%q prompt=%q", got.APIKey, got.SystemPrompt)
+	}
+	if got.Model != cfg.Model || got.BaseURL != cfg.BaseURL {
+		t.Fatalf("地址或模型变化: %q %q", got.BaseURL, got.Model)
+	}
+	if got.Timeout != cfg.Timeout || got.Temperature != cfg.Temperature {
+		t.Fatalf("Timeout=%s Temperature=%v", got.Timeout, got.Temperature)
+	}
+	if !got.AutoCheckUpdate {
+		t.Fatal("auto_check 应该为 true")
+	}
+	if got.TranslateOnly.String() != "Ctrl+Alt+T" || got.TranslateAndSend.String() != "Alt+Enter" {
+		t.Fatalf("热键 = %s / %s", got.TranslateAndSend, got.TranslateOnly)
+	}
+	if len(got.Processes) != 2 || got.Processes[0] != "ms-teams.exe" || got.Processes[1] != "Teams.exe" {
+		t.Fatalf("Processes = %#v", got.Processes)
+	}
+}
+
+func TestCreateDefaultDoesNotOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	if err := os.WriteFile(path, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := CreateDefault(path)
+	if err == nil {
+		t.Fatal("已有文件时不应该覆盖")
+	}
+	if !os.IsExist(err) {
+		t.Fatalf("错误 = %v，期望已存在", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "keep" {
+		t.Fatalf("文件被改成了 %q", got)
+	}
+}
+
+func TestSaveKeepsOriginalWhenInvalid(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	if err := os.WriteFile(path, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Default()
+	cfg.BaseURL = ""
+	if err := Save(path, cfg); err == nil {
+		t.Fatal("空地址应该保存失败")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "keep" {
+		t.Fatalf("失败时文件被改成了 %q", got)
+	}
+}
+
+func TestSaveOverwrites(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	if err := CreateDefault(path); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Default()
+	cfg.Model = "replaced"
+	cfg.AutoCheckUpdate = true
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Model != "replaced" || !got.AutoCheckUpdate {
+		t.Fatalf("Model=%q AutoCheck=%v", got.Model, got.AutoCheckUpdate)
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, ".transhelper-*.tmp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("临时文件还在: %v", matches)
 	}
 }
 

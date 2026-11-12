@@ -18,18 +18,17 @@
 
 1. 打开 [Releases](https://github.com/pureGavin/transHelper/releases/latest)，下载 `transHelper-YYYY.MM.x-windows-amd64.zip`。
 2. 解压。
-3. 把同目录的 `transhelper.example.toml` 复制一份，改名为 `transhelper.toml`，填好模型地址。需要密钥时再填写 `api_key`。
-4. 双击 `transhelper.exe`。没有黑色控制台窗口，托盘里出现图标。
-5. 在 Teams 输入框里按 `Alt+T` 或 `Alt+Enter`。
-6. 退出：在托盘图标上右键，选择“退出”。
+3. 双击 `transhelper.exe`。没有黑色控制台窗口，托盘里出现图标。同目录没有 `transhelper.toml` 时会自动创建，并提示填写模型地址。已有配置不会被覆盖。
+4. 在 Teams 输入框里按 `Alt+T` 或 `Alt+Enter`。
+5. 退出：在托盘图标上右键，选择“退出”。
 
-找不到 `transhelper.toml` 时会弹出说明，不会静默退出。日志在 exe 旁边的 `transhelper.log`，只记错误、耗时和字数，不记消息内容。同一时间只能运行一个实例。
+日志在 exe 旁边的 `transhelper.log`，只记错误、耗时和字数，不记消息内容。同一时间只能运行一个实例。
 
 未签名程序第一次运行时，Windows 和杀毒软件可能拦截，见“SmartScreen 与杀毒软件”。
 
 ## 配置
 
-复制 [transhelper.example.toml](transhelper.example.toml) 为 `transhelper.toml`，按自己的环境修改。`transhelper.toml` 含有密钥，已被 Git 忽略。示例里的地址是占位用的 `http://localhost:8000/v1`，要改成自己的模型服务。
+第一次运行会在 exe 同目录创建 `transhelper.toml`。已有文件不会被覆盖。`transhelper.toml` 含有密钥，已被 Git 忽略。新建文件里的地址是占位用的 `http://localhost:8000/v1`，要改成自己的模型服务。程序写回配置时会按内置模板重写整个文件，手写的注释不会保留。
 
 - `model.base_url`、`model.model`：必填。地址是 OpenAI 兼容接口，末尾保留 `/v1`。
 - `model.api_key`：可选，不需要密钥时留空。
@@ -39,6 +38,7 @@
 - `hotkeys.translate_and_send`：默认 `Alt+Enter`，翻译后替换输入框内容并回车发送。
 - `hotkeys.translate_only`：默认 `Alt+T`，只替换输入框内容，不发送。
 - `target.processes`：前台进程白名单，不区分大小写。默认是 `ms-teams.exe`（新版 Teams）和 `Teams.exe`（经典版）。
+- `update.auto_check`：是否自动检查更新。默认 `false`。
 
 热键至少要带 Ctrl、Alt、Win 中的一个，两个热键不能相同。配置里出现拼错的字段会直接报错。
 
@@ -74,14 +74,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup.ps1
 
 ### 运行
 
-先准备好 `transhelper.toml`，然后：
+开发时带上 `-config`，指向项目里的 `transhelper.toml`。没有这个文件时会创建一份默认配置。不写 `-config` 时，程序读取 exe 同目录的配置；`go run` 的 exe 在临时目录，配置也会创建在那里，而不是项目根目录。
 
 ```powershell
 . .\scripts\env.ps1
 go run ./cmd/transhelper -config transhelper.toml
 ```
 
-不写 `-config` 时，程序读取 exe 同目录的 `transhelper.toml`。开发时如果有控制台，日志也会打到终端；正式包没有控制台，只写文件。
+开发时如果有控制台，日志也会打到终端；正式包没有控制台，只写文件。
 
 ### 构建发布包
 
@@ -94,10 +94,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Version 2
 
 脚本会先跑 `gofmt`、`go vet` 和 `go test`，再打进图标和版本信息，用 `-H=windowsgui` 编出没有控制台的 exe。产物：
 
-- `dist\transhelper\transhelper.exe`，旁边还有示例配置和 README
+- `dist\transhelper\transhelper.exe`，旁边还有 README
 - `dist\transHelper-<版本>-windows-amd64.zip`
 
-zip 里只有这三个文件。即使把带密钥的 `transhelper.toml` 放进 `dist\transhelper\`，它也不会进 zip。脚本结束时打印 exe 和 zip 的 SHA256。不用 UPX 压缩，压缩过的 exe 更容易被杀毒软件误报。
+zip 里只有 exe 和 README。即使把带密钥的 `transhelper.toml` 放进 `dist\transhelper\`，它也不会进 zip。脚本结束时打印 exe 和 zip 的 SHA256。不用 UPX 压缩，压缩过的 exe 更容易被杀毒软件误报。
 
 `dist\transhelper\transhelper.exe` 正在运行时脚本会中止，先从托盘退出再构建。
 
@@ -137,9 +137,8 @@ exe 没有代码签名。第一次运行时，Windows 可能提示“Windows 已
 - `internal/app/`：一次热键的流程编排，不调用 Win32。
 - `internal/win/`：窗口、热键、剪贴板、托盘等全部 Win32 调用。
 - `internal/hotkey/`：把热键字符串解析成修饰键和虚拟键码。
-- `internal/config/`：读取 TOML 配置、填默认值并校验。
+- `internal/config/`：读取和写回 TOML 配置。默认内容在 `template.toml`。
 - `internal/translate/`：OpenAI 兼容的翻译客户端和输出清洗。
 - `testdata/samples.txt`：人工检查用的样例句。
-- `transhelper.example.toml`：配置示例。
 - `.tools/`：Go 编译器和缓存，不入库。
 - `AGENTS.md`：给 AI 助手的项目约定。

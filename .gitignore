@@ -30,7 +30,7 @@
 *.local.*
 *.pem
 *.key
-# 含有模型密钥，只入库 transhelper.example.toml
+# 含有模型密钥。默认内容由程序内置模板生成。
 /transhelper.toml
 
 # 编辑器、IDE 和 AI 工具的本地状态

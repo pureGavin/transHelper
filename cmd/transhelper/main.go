@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"transhelper/internal/app"
 	"transhelper/internal/config"
 	"transhelper/internal/translate"
 	"transhelper/internal/win"
@@ -39,11 +40,8 @@ func main() {
 		}
 		path = config.DefaultPath(exe)
 	}
-	cfg, err := config.Load(path)
+	cfg, firstRun, err := loadOrCreate(path)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			fatal(fmt.Errorf("没有找到 %s。把同目录的 transhelper.example.toml 复制一份并改名为 transhelper.toml，填好模型地址和密钥后再运行。", path))
-		}
 		fatal(err)
 	}
 
@@ -60,16 +58,50 @@ func main() {
 	}
 	defer release()
 
-	client := &translate.Client{
+	if err := win.Run(context.Background(), win.Options{
+		ConfigPath:    path,
+		Config:        cfg,
+		Version:       version,
+		FirstRun:      firstRun,
+		Logger:        logger,
+		NewTranslator: newTranslator,
+	}); err != nil {
+		logger.Printf("退出: %v", err)
+		fatal(err)
+	}
+}
+
+// loadOrCreate 读取配置。文件不存在时先创建默认配置，已有文件不会被覆盖。
+func loadOrCreate(path string) (config.Config, bool, error) {
+	cfg, err := config.Load(path)
+	if err == nil {
+		return cfg, false, nil
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return config.Config{}, false, err
+	}
+	firstRun := false
+	if createErr := config.CreateDefault(path); createErr != nil {
+		if !errors.Is(createErr, fs.ErrExist) {
+			return config.Config{}, false, createErr
+		}
+	} else {
+		firstRun = true
+	}
+	cfg, err = config.Load(path)
+	if err != nil {
+		return config.Config{}, false, err
+	}
+	return cfg, firstRun, nil
+}
+
+func newTranslator(cfg config.Config) app.Translator {
+	return &translate.Client{
 		BaseURL:     cfg.BaseURL,
 		APIKey:      cfg.APIKey,
 		Model:       cfg.Model,
 		Temperature: cfg.Temperature,
 		Prompt:      cfg.SystemPrompt,
-	}
-	if err := win.Run(context.Background(), cfg, client, logger); err != nil {
-		logger.Printf("退出: %v", err)
-		fatal(err)
 	}
 }
 
