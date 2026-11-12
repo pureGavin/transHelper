@@ -40,11 +40,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup.ps1
 
 热键至少要带 Ctrl、Alt、Win 中的一个，两个热键不能相同。配置里出现拼错的字段会直接报错。
 
+## 检查译文
+
+不注册热键，直接用配置里的模型翻译样例句：
+
+```powershell
+. .\scripts\env.ps1
+go run ./cmd/trytranslate -config transhelper.toml
+```
+
+样例句在 `testdata/samples.txt`，条目之间用单独一行的 `---` 分隔。
+
 ## 目录
 
 - `scripts/`：安装 Go 和设置当前会话环境的脚本。
 - `internal/hotkey/`：把热键字符串解析成修饰键和虚拟键码。
 - `internal/config/`：读取 TOML 配置、填默认值并校验。
+- `internal/translate/`：OpenAI 兼容的翻译客户端和输出清洗。
+- `cmd/trytranslate/`：用真实模型翻译样例句。
+- `testdata/samples.txt`：人工检查用的样例句。
 - `transhelper.example.toml`：配置示例。
 - `.tools/`：Go 编译器和缓存，不入库。
 - `AGENTS.md`：给 AI 助手的项目约定。
