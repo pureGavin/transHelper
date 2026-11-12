@@ -48,6 +48,14 @@ jobs:
           if ($version -notmatch '^\d{4}\.(0[1-9]|1[0-2])\.\d+$') { throw "invalid version: $version" }
           Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$version" -Encoding ascii
 
+      - name: Write release notes
+        shell: powershell
+        run: |
+          $notes = Join-Path $env:RUNNER_TEMP "release-notes.md"
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release-notes.ps1 -OutFile $notes
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content -Path $env:GITHUB_ENV -Value "NOTES_PATH=$notes" -Encoding ascii
+
       - name: Build
         shell: powershell
         run: |
@@ -62,10 +70,11 @@ jobs:
           $version = "${{ steps.version.outputs.version }}"
           $zip = "dist\transHelper-$version-windows-amd64.zip"
           $exe = "dist\transhelper\transhelper.exe"
+          if (-not $env:NOTES_PATH) { throw "missing release notes" }
           $exeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash.ToLowerInvariant()
           $zipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
-          $notesPath = Join-Path $env:RUNNER_TEMP "release-notes.txt"
-          $notes = "SHA256`r`ntranshelper.exe $exeHash`r`ntransHelper-$version-windows-amd64.zip $zipHash`r`n"
-          Set-Content -LiteralPath $notesPath -Value $notes -Encoding ascii
-          gh release create "v$version" $zip --target $env:GITHUB_SHA --title "transHelper $version" --notes-file $notesPath
+          $extra = "`r`nSHA256`r`ntranshelper.exe $exeHash`r`ntransHelper-$version-windows-amd64.zip $zipHash`r`n"
+          $utf8 = New-Object System.Text.UTF8Encoding $false
+          [System.IO.File]::AppendAllText($env:NOTES_PATH, $extra, $utf8)
+          gh release create "v$version" $zip --target $env:GITHUB_SHA --title "transHelper $version" --notes-file $env:NOTES_PATH
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -55,6 +55,7 @@
 - 每次成功发布都会留下 tag `vYYYY.MM.x`，下一次的 `x` 就是这些 tag 里的最大值加 1。
 - 在本机构建时不传 `-Version`，版本号是当前年月加 `.0`，例如 `2026.11.0`，用来和正式发布区分。
 - 提交说明里写上 `[skip ci]` 时，这次推送不会触发构建，也不会产生新的 Release。适合只改文档的提交。
+- Release 说明按「更新」「修复」「删除」分组，来自提交说明里以这几个词开头的行。没有这些行时发布会失败，不会发出一份看不出改了什么的 Release。说明末尾有和上一版的对比链接，再附上 exe 和 zip 的 SHA256。
 
 ## 从源码构建
 
@@ -127,7 +128,7 @@ exe 没有代码签名。第一次运行时，Windows 可能提示“Windows 已
 
 ## 目录
 
-- `scripts/`：安装 Go、设置当前会话环境、`build.ps1` 构建发布包、`next-version.ps1` 计算下一个版本号，以及 `github-issues.ps1` 提交和拉取 Issues。
+- `scripts/`：安装 Go、设置当前会话环境、`build.ps1` 构建发布包、`next-version.ps1` 计算下一个版本号、`github-issues.ps1` 提交和拉取 Issues，以及 `release-notes.ps1` 生成 Release 说明。
 - `.github/workflows/`：推送到 main 后构建并发布 Release。
 - `.cursor/skills/`：提交和拉取 GitHub Issues 的说明。
 - `cmd/transhelper/`：正式程序。加载配置、保证单实例、写日志、跑消息循环。

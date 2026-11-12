@@ -31,7 +31,7 @@
 
 ## 目录
 
-- `scripts/`：安装 Go、设置当前会话环境、构建发布包、计算下一个版本号，以及提交和拉取 GitHub Issues。
+- `scripts/`：安装 Go、设置当前会话环境、构建发布包、计算下一个版本号、提交和拉取 GitHub Issues，以及生成 Release 说明。
 - `.github/workflows/`：推送到 main 后构建并发布 Release。
 - `.cursor/skills/`：提交和拉取 GitHub Issues 的说明。
 - `cmd/transhelper/`：正式程序入口。
@@ -63,6 +63,7 @@
 
 - 远端 `origin` 是 `git@github.com:pureGavin/transHelper.git`。提交身份写在本仓库的本地配置里，邮箱是 `puregavin@foxmail.com`，不要改全局 Git 配置。
 - 做完某个 issue 时，提交说明末尾写 `Closes #N`。推送到 `main` 后 GitHub 会关掉它。
+- 提交说明末尾还要写用户能感受到的变化，每行一条，以 `更新：`、`修复：` 或 `删除：` 开头。中英文冒号都可以。没有这些行时，这次推送的 Release 会失败。
 - 每完成一次提交，都用 AskQuestion 询问是否推送到 GitHub，并说明推送 `main` 会触发一次 Release。没有得到同意就不推送，也不强推。
 - 提交用显式路径 `git add <路径>`，不用 `git add -A`。每个里程碑提交一次，方便 `git revert` 或 `git reset` 回滚。
 - `.gitignore` 是黑名单：出现新的杂项文件，先补忽略规则，再提交。
@@ -73,6 +74,8 @@
 
   整个 .cursor/ 被忽略时，Cursor 查找 rules 也会跳过它，规则可能不生效。
   现在只放行 rules 和 skills，调试日志等仍留在本地。
+
+  更新：.cursor 下的 rules 和 skills 会进入仓库
   ```
 
 - `.cursor/` 下只有 `rules/` 和 `skills/` 入库，调试日志、plans 等留在本地。
