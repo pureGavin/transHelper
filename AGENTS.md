@@ -53,7 +53,7 @@
 
 ## Git
 
-- 远端 `origin` 是 `https://github.com/pureGavin/transHelper.git`。提交身份写在本仓库的本地配置里，邮箱是 `puregavin@foxmail.com`，不要改全局 Git 配置。
+- 远端 `origin` 是 `git@github.com:pureGavin/transHelper.git`。提交身份写在本仓库的本地配置里，邮箱是 `puregavin@foxmail.com`，不要改全局 Git 配置。
 - 每完成一次提交，都用 AskQuestion 询问是否推送到 GitHub，并说明推送 `main` 会触发一次 Release。没有得到同意就不推送，也不强推。
 - 提交用显式路径 `git add <路径>`，不用 `git add -A`。每个里程碑提交一次，方便 `git revert` 或 `git reset` 回滚。
 - `.gitignore` 是黑名单：出现新的杂项文件，先补忽略规则，再提交。

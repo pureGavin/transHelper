@@ -4,7 +4,7 @@
 
 - [x] 本地 Git 仓库，远端是 GitHub 上的 origin。
 
-  测试：`git remote -v` 显示 `https://github.com/pureGavin/transHelper.git`。
+  测试：`git remote -v` 显示 `git@github.com:pureGavin/transHelper.git`。
 
 - [x] Go 工具链放在项目内的 `.tools/`，不安装到 C 盘。
 
