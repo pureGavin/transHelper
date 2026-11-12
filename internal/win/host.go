@@ -72,7 +72,21 @@ type host struct {
 	busy             atomic.Bool
 
 	notifyMu sync.Mutex
-	pending  []string
+	pending  []notice
+
+	updateMu        sync.Mutex
+	updateQueue     []updateOutcome
+	checking        atomic.Bool
+	balloonURL      string
+	notifiedVersion string
+	autoCancel      context.CancelFunc
+}
+
+// notice 是一条待显示的托盘通知。info 为 true 时不响提示音。
+type notice struct {
+	text string
+	info bool
+	url  string
 }
 
 // Run 创建隐藏窗口、托盘和热键，直到用户退出。
@@ -140,6 +154,7 @@ func (h *host) start() error {
 	if h.firstRun {
 		h.Notify("已创建配置文件，请填写模型地址")
 	}
+	h.syncAutoCheck()
 	return nil
 }
 
@@ -274,12 +289,21 @@ func wndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 		h.onHotkey(wParam)
 		return 0
 	case wmTray:
-		if lParam == wmRButtonUp || lParam == wmContextMenu {
+		switch lParam {
+		case wmRButtonUp, wmContextMenu:
 			h.showMenu()
+		case ninBalloonUserClick:
+			h.openBalloon()
+		case ninBalloonTimeout, ninBalloonHide:
+			// 气泡已经消失，不能再把下一次点击算到旧的下载页上。
+			h.balloonURL = ""
 		}
 		return 0
 	case wmShowNotify:
 		h.flushNotify()
+		return 0
+	case wmUpdateResult:
+		h.onUpdateResult()
 		return 0
 	case wmClose:
 		h.cancel()
@@ -389,8 +413,19 @@ func unregisterOne(hwnd, id uintptr) {
 }
 
 func (h *host) Notify(message string) {
+	h.enqueue(notice{text: message})
+}
+
+func (h *host) info(message, link string) {
+	h.enqueue(notice{text: message, info: true, url: link})
+}
+
+func (h *host) enqueue(item notice) {
+	if item.text == "" {
+		return
+	}
 	h.notifyMu.Lock()
-	h.pending = append(h.pending, message)
+	h.pending = append(h.pending, item)
 	h.notifyMu.Unlock()
 	if h.hwnd != 0 {
 		procPostMessage.Call(h.hwnd, wmShowNotify, 0, 0)
@@ -403,8 +438,15 @@ func (h *host) flushNotify() {
 	h.pending = nil
 	h.notifyMu.Unlock()
 	for _, item := range items {
-		h.balloon(item)
-		procMessageBeep.Call(mbIconWarning)
+		if item.url != "" {
+			h.balloonURL = item.url
+		} else {
+			h.balloonURL = ""
+		}
+		h.balloon(item.text)
+		if !item.info {
+			procMessageBeep.Call(mbIconWarning)
+		}
 	}
 }
 
@@ -472,9 +514,14 @@ func (h *host) showMenu() {
 		return
 	}
 	defer procDestroyMenu.Call(menu)
-	label := utf16String("退出")
-	procAppendMenu.Call(menu, mfString, menuExit, uintptr(unsafe.Pointer(&label[0])))
-	runtime.KeepAlive(label)
+	appendMenuItem(menu, mfString, menuCheckUpdate, "检查更新")
+	autoFlags := uintptr(mfString)
+	if h.cfg.AutoCheckUpdate {
+		autoFlags |= mfChecked
+	}
+	appendMenuItem(menu, autoFlags, menuAutoCheck, "自动检查更新")
+	procAppendMenu.Call(menu, mfSeparator, 0, 0)
+	appendMenuItem(menu, mfString, menuExit, "退出")
 
 	// 菜单不先把窗口拉到前台的话，点别处不会自动关掉。点完再发一个空消息，是 Win32 菜单的老毛病。
 	procSetForegroundWindow.Call(h.hwnd)
@@ -483,10 +530,21 @@ func (h *host) showMenu() {
 	runtime.KeepAlive(&pt)
 	cmd, _, _ := procTrackPopupMenu.Call(menu, tpmReturnCmd, uintptr(pt.X), uintptr(pt.Y), 0, h.hwnd, 0)
 	procPostMessage.Call(h.hwnd, wmNull, 0, 0)
-	if cmd == menuExit {
+	switch cmd {
+	case menuExit:
 		h.cancel()
 		procPostQuitMessage.Call(0)
+	case menuCheckUpdate:
+		h.checkUpdate(true)
+	case menuAutoCheck:
+		h.toggleAutoCheck()
 	}
+}
+
+func appendMenuItem(menu, flags, id uintptr, label string) {
+	text := utf16String(label)
+	procAppendMenu.Call(menu, flags, id, uintptr(unsafe.Pointer(&text[0])))
+	runtime.KeepAlive(text)
 }
 
 // loadAppIcon 优先用 exe 里名为 APP 的图标。

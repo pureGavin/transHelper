@@ -38,9 +38,18 @@
 - `hotkeys.translate_and_send`：默认 `Alt+Enter`，翻译后替换输入框内容并回车发送。
 - `hotkeys.translate_only`：默认 `Alt+T`，只替换输入框内容，不发送。
 - `target.processes`：前台进程白名单，不区分大小写。默认是 `ms-teams.exe`（新版 Teams）和 `Teams.exe`（经典版）。
-- `update.auto_check`：是否自动检查更新。默认 `false`。
+- `update.auto_check`：是否自动检查更新。默认 `false`。托盘菜单里的「自动检查更新」会写回这个字段。
 
 热键至少要带 Ctrl、Alt、Win 中的一个，两个热键不能相同。配置里出现拼错的字段会直接报错。
+
+## 检查更新
+
+右键托盘图标，选择「检查更新」。程序只查询 GitHub Release，不会自己下载或替换 exe。需要能访问 `api.github.com`。公司网络要走代理时，先设置环境变量 `HTTPS_PROXY` 再启动。
+
+- 点击后右下角通知「正在检查更新」。已是最新、检查失败，也会在通知里说明。
+- 有新版本时，通知里带版本号。点击通知打开对应的 Release 页面。
+- 「自动检查更新」默认关闭。勾选后写入配置，大约 30 秒后检查一次，之后每 24 小时一次。只有发现新版本才通知，同一次运行里同一个版本只提示一次。检查失败不影响翻译。
+- `go run` 的版本是 `dev`，本机 `build.ps1` 不传版本号时末尾是 `.0`。这两种都不是正式版：手动检查会说明当前是本机构建；自动检查不会在这种构建上运行。
 
 ## 问题与计划
 
@@ -147,6 +156,7 @@ exe 没有代码签名。第一次运行时，Windows 可能提示“Windows 已
 - `internal/win/`：窗口、热键、剪贴板、托盘等全部 Win32 调用。
 - `internal/hotkey/`：把热键字符串解析成修饰键和虚拟键码。
 - `internal/config/`：读取和写回 TOML 配置。默认内容在 `template.toml`。
+- `internal/update/`：查询 GitHub Release 并比较版本号。
 - `internal/translate/`：OpenAI 兼容的翻译客户端和输出清洗。
 - `testdata/samples.txt`：人工检查用的样例句。
 - `.tools/`：Go 编译器和缓存，不入库。

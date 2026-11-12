@@ -57,6 +57,7 @@ var (
 	procGetModuleHandle = kernel32.NewProc("GetModuleHandleW")
 
 	procShellNotifyIcon = shell32.NewProc("Shell_NotifyIconW")
+	procShellExecute    = shell32.NewProc("ShellExecuteW")
 )
 
 const (
@@ -72,6 +73,7 @@ const (
 	wmApp          = 0x8000
 	wmTray         = wmApp + 1
 	wmShowNotify   = wmApp + 2
+	wmUpdateResult = wmApp + 3
 	pmNoRemove     = 0x0000
 	mbIconWarning  = 0x30
 	wsExToolWindow = 0x00000080
@@ -123,15 +125,23 @@ const (
 	niifInfo      = 0x1
 	niifNoSound   = 0x10
 	// notifyIconVersion 用旧版回调：lParam 直接是鼠标消息，处理起来不容易和版本 4 的打包格式搞混。
-	notifyIconVersion = 3
-	idiApplication    = 32512
-	imageIcon         = 1
-	lrShared          = 0x00008000
-	smCxSmIcon        = 49
-	smCySmIcon        = 50
-	mfString          = 0
-	tpmReturnCmd      = 0x0100
-	menuExit          = 1
+	notifyIconVersion   = 3
+	idiApplication      = 32512
+	imageIcon           = 1
+	lrShared            = 0x00008000
+	smCxSmIcon          = 49
+	smCySmIcon          = 50
+	mfString            = 0
+	mfChecked           = 0x0008
+	mfSeparator         = 0x0800
+	tpmReturnCmd        = 0x0100
+	menuCheckUpdate     = 1
+	menuAutoCheck       = 2
+	menuExit            = 3
+	ninBalloonHide      = 0x0403
+	ninBalloonTimeout   = 0x0404
+	ninBalloonUserClick = 0x0405
+	swShowNormal        = 1
 
 	hotkeySend = 1
 	hotkeyOnly = 2
