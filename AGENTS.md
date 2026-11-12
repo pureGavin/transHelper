@@ -31,8 +31,9 @@
 
 ## 目录
 
-- `scripts/`：安装 Go、设置当前会话环境、构建发布包，以及计算下一个版本号。
+- `scripts/`：安装 Go、设置当前会话环境、构建发布包、计算下一个版本号，以及提交和拉取 GitHub Issues。
 - `.github/workflows/`：推送到 main 后构建并发布 Release。
+- `.cursor/skills/`：提交和拉取 GitHub Issues 的说明。
 - `cmd/transhelper/`：正式程序入口。
 - `cmd/transhelper/winres/`：图标、清单和版本信息资源。
 - `cmd/trytranslate/`：用真实模型翻译样例句。
@@ -43,17 +44,25 @@
 - `internal/win/`：全部 Win32 调用。
 - `.tools/`：Go 编译器和缓存，不入库。
 
+## 计划与问题
+
+- 计划和问题都提交为 GitHub Issues，不再写 `TODO.md`。
+- 动手前先看 [.cursor/skills/github-issue-pull/SKILL.md](.cursor/skills/github-issue-pull/SKILL.md)，避免和现有 issue 重复。新的按 [.cursor/skills/github-issue-submit/SKILL.md](.cursor/skills/github-issue-submit/SKILL.md) 提交。
+- 正文必须有「问题」「复现步骤」「期望结果」，而且不能空着。
+- issue 是公开的，不写密钥、token 和内网地址，也不上传测试文件。
+- token 只放在被忽略的 `.tools/secrets/github-token`。用 `scripts\github-issues.ps1 save-token` 写入，不要贴到对话或仓库里。
+
 ## 文档同步
 
 每次修改项目，在同一次提交里更新受影响的文档：
 
 - `README.md`：功能、用法、配置项、构建方式有变化时。
-- `TODO.md`：完成的任务要勾选；新增任务或测试方法有变化时补充。
 - `AGENTS.md`：约定、目录结构、工具链有变化时。
 
 ## Git
 
 - 远端 `origin` 是 `git@github.com:pureGavin/transHelper.git`。提交身份写在本仓库的本地配置里，邮箱是 `puregavin@foxmail.com`，不要改全局 Git 配置。
+- 做完某个 issue 时，提交说明末尾写 `Closes #N`。推送到 `main` 后 GitHub 会关掉它。
 - 每完成一次提交，都用 AskQuestion 询问是否推送到 GitHub，并说明推送 `main` 会触发一次 Release。没有得到同意就不推送，也不强推。
 - 提交用显式路径 `git add <路径>`，不用 `git add -A`。每个里程碑提交一次，方便 `git revert` 或 `git reset` 回滚。
 - `.gitignore` 是黑名单：出现新的杂项文件，先补忽略规则，再提交。

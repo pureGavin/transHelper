@@ -4,7 +4,7 @@
 
 ## 状态
 
-推送到 `main` 后，GitHub Actions 会自动构建并发布。Teams 里的端到端测试已经通过。进度见 [TODO.md](https://github.com/pureGavin/transHelper/blob/main/TODO.md)。
+推送到 `main` 后，GitHub Actions 会自动构建并发布。Teams 里的端到端测试已经通过。计划和问题见 [Issues](https://github.com/pureGavin/transHelper/issues)。
 
 ## 功能
 
@@ -41,6 +41,10 @@
 - `target.processes`：前台进程白名单，不区分大小写。默认是 `ms-teams.exe`（新版 Teams）和 `Teams.exe`（经典版）。
 
 热键至少要带 Ctrl、Alt、Win 中的一个，两个热键不能相同。配置里出现拼错的字段会直接报错。
+
+## 问题与计划
+
+到 [Issues](https://github.com/pureGavin/transHelper/issues) 查看和提交。写明遇到的问题、怎样复现、期望的结果。计划和还没做的验证也写在那里。
 
 ## 发布与版本号
 
@@ -123,8 +127,9 @@ exe 没有代码签名。第一次运行时，Windows 可能提示“Windows 已
 
 ## 目录
 
-- `scripts/`：安装 Go、设置当前会话环境、`build.ps1` 构建发布包，以及 `next-version.ps1` 计算下一个版本号。
+- `scripts/`：安装 Go、设置当前会话环境、`build.ps1` 构建发布包、`next-version.ps1` 计算下一个版本号，以及 `github-issues.ps1` 提交和拉取 Issues。
 - `.github/workflows/`：推送到 main 后构建并发布 Release。
+- `.cursor/skills/`：提交和拉取 GitHub Issues 的说明。
 - `cmd/transhelper/`：正式程序。加载配置、保证单实例、写日志、跑消息循环。
 - `cmd/transhelper/winres/`：图标、清单和版本信息资源。
 - `cmd/trytranslate/`：用真实模型翻译样例句。
@@ -137,4 +142,3 @@ exe 没有代码签名。第一次运行时，Windows 可能提示“Windows 已
 - `transhelper.example.toml`：配置示例。
 - `.tools/`：Go 编译器和缓存，不入库。
 - `AGENTS.md`：给 AI 助手的项目约定。
-- `TODO.md`：计划和测试方法。
