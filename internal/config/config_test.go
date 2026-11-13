@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,6 +52,9 @@ model = " demo "
 	}
 	if cfg.AutoCheckUpdate {
 		t.Fatal("未写 update.auto_check 时应该关闭自动检查")
+	}
+	if cfg.Proxy.Enabled || cfg.Proxy.Type != "http" || cfg.Proxy.Host != "" || cfg.Proxy.Port != 0 || cfg.Proxy.Auth || cfg.Proxy.ForModel {
+		t.Fatalf("未写 proxy 时 = %+v", cfg.Proxy)
 	}
 }
 
@@ -196,6 +200,84 @@ processes = ["notepad.exe", "Notepad.exe"]
 			want: "重复",
 		},
 		{
+			name: "代理类型不对",
+			toml: `
+[model]
+base_url = "http://127.0.0.1:9/v1"
+model = "demo"
+
+[proxy]
+type = "https"
+`,
+			want: "proxy.type",
+		},
+		{
+			name: "代理端口太大",
+			toml: `
+[model]
+base_url = "http://127.0.0.1:9/v1"
+model = "demo"
+
+[proxy]
+port = 65536
+`,
+			want: "proxy.port",
+		},
+		{
+			name: "启用时代理地址为空",
+			toml: `
+[model]
+base_url = "http://127.0.0.1:9/v1"
+model = "demo"
+
+[proxy]
+enabled = true
+port = 8080
+`,
+			want: "proxy.host",
+		},
+		{
+			name: "启用时代理端口为 0",
+			toml: `
+[model]
+base_url = "http://127.0.0.1:9/v1"
+model = "demo"
+
+[proxy]
+enabled = true
+host = "localhost"
+port = 0
+`,
+			want: "proxy.port",
+		},
+		{
+			name: "启用身份验证但没有用户名",
+			toml: `
+[model]
+base_url = "http://127.0.0.1:9/v1"
+model = "demo"
+
+[proxy]
+enabled = true
+host = "localhost"
+port = 1080
+auth = true
+`,
+			want: "proxy.username",
+		},
+		{
+			name: "代理地址带协议",
+			toml: `
+[model]
+base_url = "http://127.0.0.1:9/v1"
+model = "demo"
+
+[proxy]
+host = "http://localhost"
+`,
+			want: "proxy.host",
+		},
+		{
 			name: "未知字段",
 			toml: `
 [model]
@@ -249,6 +331,9 @@ func TestDefaultTemplate(t *testing.T) {
 	if cfg.AutoCheckUpdate {
 		t.Fatal("默认不应该自动检查更新")
 	}
+	if cfg.Proxy.Enabled || cfg.Proxy.Type != "http" || cfg.Proxy.Auth || cfg.Proxy.ForModel {
+		t.Fatalf("默认代理 = %+v", cfg.Proxy)
+	}
 	if strings.Contains(string(data), "192.168.") || strings.Contains(cfg.BaseURL, "192.168.") {
 		t.Fatal("默认配置不应该写内网地址")
 	}
@@ -264,6 +349,16 @@ func TestRenderRoundTrip(t *testing.T) {
 	cfg.Temperature = 0
 	cfg.AutoCheckUpdate = true
 	cfg.Processes = []string{"ms-teams.exe", "Teams.exe"}
+	cfg.Proxy = Proxy{
+		Enabled:  true,
+		Type:     "socks5",
+		Host:     "localhost",
+		Port:     1080,
+		Auth:     true,
+		Username: "user",
+		Password: "p@ss \"word\" \\ 空格 ",
+		ForModel: true,
+	}
 	only, err := hotkey.Parse("Ctrl+Alt+T")
 	if err != nil {
 		t.Fatal(err)
@@ -295,6 +390,110 @@ func TestRenderRoundTrip(t *testing.T) {
 	}
 	if len(got.Processes) != 2 || got.Processes[0] != "ms-teams.exe" || got.Processes[1] != "Teams.exe" {
 		t.Fatalf("Processes = %#v", got.Processes)
+	}
+	if got.Proxy != cfg.Proxy {
+		t.Fatalf("代理没有原样回来: %+v", got.Proxy)
+	}
+}
+
+func TestParseProxy(t *testing.T) {
+	cfg, err := Parse([]byte(`
+[model]
+base_url = "http://127.0.0.1:9/v1"
+model = "demo"
+
+[proxy]
+enabled = true
+type = "SOCKS5"
+host = "localhost"
+port = 1080
+auth = true
+username = " user "
+password = " keep spaces "
+use_for_model = true
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Proxy.Type != "socks5" || cfg.Proxy.Host != "localhost" || cfg.Proxy.Port != 1080 {
+		t.Fatalf("地址 = %+v", cfg.Proxy)
+	}
+	if cfg.Proxy.Username != "user" || cfg.Proxy.Password != " keep spaces " || !cfg.Proxy.ForModel {
+		t.Fatalf("身份 = %+v", cfg.Proxy)
+	}
+
+	off, err := Parse([]byte(`
+[model]
+base_url = "http://127.0.0.1:9/v1"
+model = "demo"
+
+[proxy]
+enabled = false
+auth = true
+password = "x"
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if off.Proxy.Enabled || !off.Proxy.Auth || off.Proxy.Username != "" || off.Proxy.Password != "x" {
+		t.Fatalf("关闭代理时仍应保留已填内容: %+v", off.Proxy)
+	}
+}
+
+func TestProxyURLAndClient(t *testing.T) {
+	off := Proxy{Type: "http", Host: "127.0.0.1", Port: 8888, Auth: true, Username: "u", Password: "p"}
+	if off.URL() != nil || off.Client() != nil || off.ModelClient() != nil {
+		t.Fatal("未启用时不应该产生代理")
+	}
+
+	on := Proxy{Enabled: true, Type: "http", Host: "127.0.0.1", Port: 8888}
+	if on.URL().String() != "http://127.0.0.1:8888" {
+		t.Fatalf("URL = %s", on.URL())
+	}
+	if on.ModelClient() != nil {
+		t.Fatal("未勾选时模型不走代理")
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://example.com/v1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := on.Client().Transport.(*http.Transport).Proxy(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.String() != "http://127.0.0.1:8888" {
+		t.Fatalf("Proxy = %s", got)
+	}
+
+	socks := Proxy{
+		Enabled: true, Type: "socks5", Host: "2001:db8::1", Port: 1080,
+		Auth: true, Username: "user", Password: "p@ss word", ForModel: true,
+	}
+	u := socks.URL()
+	if u.Scheme != "socks5" || u.Host != "[2001:db8::1]:1080" {
+		t.Fatalf("URL = %s", u)
+	}
+	if u.User.Username() != "user" {
+		t.Fatalf("username = %s", u.User.Username())
+	}
+	pass, ok := u.User.Password()
+	if !ok || pass != "p@ss word" {
+		t.Fatalf("password = %q", pass)
+	}
+	model := socks.ModelClient()
+	if model == nil {
+		t.Fatal("模型客户端应该存在")
+	}
+	req2, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:9/v1/chat/completions", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got2, err := model.Transport.(*http.Transport).Proxy(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got2.Scheme != "socks5" || got2.Host != "[2001:db8::1]:1080" {
+		t.Fatalf("model proxy = %s", got2)
 	}
 }
 

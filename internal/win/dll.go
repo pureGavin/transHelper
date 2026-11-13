@@ -85,6 +85,7 @@ var (
 	procGetKeyState                = user32.NewProc("GetKeyState")
 	procGetNextDlgTabItem          = user32.NewProc("GetNextDlgTabItem")
 	procLoadCursor                 = user32.NewProc("LoadCursorW")
+	procEnableWindow               = user32.NewProc("EnableWindow")
 
 	procCreateFontIndirect   = gdi32.NewProc("CreateFontIndirectW")
 	procDeleteObject         = gdi32.NewProc("DeleteObject")
@@ -189,6 +190,13 @@ const (
 	// nmClick 和 nmReturn 是 NM_CLICK、NM_RETURN，相对 NM_FIRST 的负值。
 	nmClick  = -2
 	nmReturn = -4
+
+	cbsDropDownList   = 0x0003
+	cbsHasStrings     = 0x0200
+	cbAddString       = 0x0143
+	cbSetCurSel       = 0x014E
+	cbGetCurSel       = 0x0147
+	cbGetDroppedState = 0x0157
 
 	hotkeySend = 1
 	hotkeyOnly = 2

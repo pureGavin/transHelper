@@ -138,6 +138,7 @@ func newTranslator(cfg config.Config) app.Translator {
 		Model:       cfg.Model,
 		Temperature: cfg.Temperature,
 		Prompt:      cfg.SystemPrompt,
+		HTTP:        cfg.Proxy.ModelClient(),
 	}
 }
 

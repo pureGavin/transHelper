@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -55,11 +56,14 @@ func (h *host) checkUpdate(manual bool) {
 	if manual {
 		h.info("正在检查更新")
 	}
+	// 在界面线程取出代理客户端，避免和「应用设置」同时读写配置。
+	client := h.cfg.Proxy.Client()
+	agent := h.userAgent()
 	go func() {
 		defer h.checking.Store(false)
 		ctx, cancel := context.WithTimeout(h.ctx, 10*time.Second)
 		defer cancel()
-		rel, err := update.Latest(ctx, nil, update.LatestURL, h.userAgent())
+		rel, err := update.Latest(ctx, client, update.LatestURL, agent)
 		h.pushUpdate(updateOutcome{manual: manual, release: rel, err: err})
 	}()
 }
@@ -177,10 +181,11 @@ func (h *host) startInstall(rel update.Release) {
 		return
 	}
 	h.info("正在下载更新")
-	go h.downloadUpdate(rel)
+	client := h.cfg.Proxy.Client()
+	go h.downloadUpdate(rel, client)
 }
 
-func (h *host) downloadUpdate(rel update.Release) {
+func (h *host) downloadUpdate(rel update.Release, client *http.Client) {
 	ctx, cancel := context.WithTimeout(h.ctx, 5*time.Minute)
 	defer cancel()
 	exe, err := os.Executable()
@@ -188,7 +193,7 @@ func (h *host) downloadUpdate(rel update.Release) {
 		h.reportInstall(installOutcome{err: err, page: rel.URL})
 		return
 	}
-	newExe, err := update.Download(ctx, nil, rel.Asset, filepath.Dir(exe))
+	newExe, err := update.Download(ctx, client, rel.Asset, filepath.Dir(exe))
 	if err != nil {
 		if h.ctx.Err() != nil {
 			h.updating.Store(false)

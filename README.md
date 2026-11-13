@@ -36,6 +36,8 @@
 
 「关于」页显示当前版本、编译这个程序的 Go 版本、当前 exe 的 SHA256，以及 GitHub 仓库链接。版本例如「2026.11.4」；用 `go run` 启动时是「dev」。SHA256 可以选中复制，用来和 Release 说明里的值核对。点击链接在浏览器中打开仓库。
 
+「网络」页最上面是「启用代理」。不勾选时，下面的地址、端口和身份验证是灰的，请求仍沿用 `HTTPS_PROXY` 等环境变量。勾选后可以选择 HTTP 或 SOCKS5，填写地址和端口。再勾选「需要身份验证」后可以填写用户名和密码，两种代理都可以带。密码以掩码显示。「模型请求也走代理」默认不勾：模型在本机或内网时不要勾。关掉代理时，已经填写的内容会保留。
+
 - `model.base_url`、`model.model`：必填。地址是 OpenAI 兼容接口，末尾保留 `/v1`。
 - `model.api_key`：可选，不需要密钥时留空。
 - `model.timeout_seconds`：默认 20，范围 1 到 120。超时后不改动输入框。
@@ -45,12 +47,17 @@
 - `hotkeys.translate_only`：默认 `Alt+T`，只替换输入框内容，不发送。
 - `target.processes`：前台进程白名单，不区分大小写。默认是 `ms-teams.exe`（新版 Teams）和 `Teams.exe`（经典版）。
 - `update.auto_check`：是否自动检查更新。默认 `false`。托盘菜单里的「自动检查更新」会写回这个字段。
+- `proxy.enabled`：是否使用下面的代理。默认 `false`。为 `false` 时沿用 `HTTPS_PROXY` 等环境变量。
+- `proxy.type`：`http` 或 `socks5`。
+- `proxy.host`、`proxy.port`：代理地址和端口。启用时地址必填，端口是 1 到 65535。地址不要写协议和端口。
+- `proxy.auth`、`proxy.username`、`proxy.password`：是否向代理提供用户名和密码。启用身份验证时用户名必填。密码保留首尾空格。
+- `proxy.use_for_model`：翻译请求是否也走代理。默认 `false`。检查更新和下载更新只要启用代理就会走。
 
 热键至少要带 Ctrl、Alt、Win 中的一个，两个热键不能相同。配置里出现拼错的字段会直接报错。
 
 ## 检查更新
 
-右键托盘图标，选择「检查更新」。需要能访问 `api.github.com` 和 `github.com`。公司网络要走代理时，先设置环境变量 `HTTPS_PROXY` 再启动。
+右键托盘图标，选择「检查更新」。需要能访问 `api.github.com` 和 `github.com`。公司网络要走代理时，在设置窗口的「网络」页启用代理。不启用时，仍会读取启动时的 `HTTPS_PROXY` 等环境变量。
 
 - 点击后右下角通知「正在检查更新」。已是最新、检查失败，也会在通知里说明。
 - 有新版本时，通知是「发现新版本 X，点击这里更新」。点击后下载 Release 里的 zip，用 GitHub 给出的 SHA256 校验，解压出 exe 并替换当前程序，然后重启。配置文件不会被改动。

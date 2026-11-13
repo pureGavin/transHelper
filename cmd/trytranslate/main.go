@@ -41,6 +41,7 @@ func main() {
 		Model:       cfg.Model,
 		Temperature: cfg.Temperature,
 		Prompt:      cfg.SystemPrompt,
+		HTTP:        cfg.Proxy.ModelClient(),
 	}
 	failed := 0
 	for i, sample := range samples {

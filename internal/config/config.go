@@ -5,6 +5,8 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -63,6 +65,67 @@ type Config struct {
 	Processes []string
 	// AutoCheckUpdate 为 true 时定期检查 GitHub Release。默认 false。
 	AutoCheckUpdate bool
+	// Proxy 是检查更新和可选的翻译请求使用的代理。未启用时沿用环境变量。
+	Proxy Proxy
+}
+
+// Proxy 是 HTTP 或 SOCKS5 代理。密码保留首尾空格。
+type Proxy struct {
+	// Enabled 为 false 时不使用下面的地址，请求沿用 HTTPS_PROXY 等环境变量。
+	Enabled bool
+	// Type 是 http 或 socks5。
+	Type string
+	// Host 是代理主机名或 IP，不含协议和端口。
+	Host string
+	// Port 是代理端口。未启用时可以是 0。
+	Port int
+	// Auth 为 true 时向代理提供用户名和密码。
+	Auth bool
+	// Username 是代理用户名。
+	Username string
+	// Password 是代理密码，不做 TrimSpace。
+	Password string
+	// ForModel 为 true 时翻译请求也走这个代理。
+	ForModel bool
+}
+
+// URL 返回代理地址。未启用时返回 nil。开启身份验证时带上用户名和密码。
+func (p Proxy) URL() *url.URL {
+	if !p.Enabled {
+		return nil
+	}
+	u := &url.URL{
+		Scheme: p.Type,
+		Host:   net.JoinHostPort(p.Host, strconv.Itoa(p.Port)),
+	}
+	if p.Auth {
+		u.User = url.UserPassword(p.Username, p.Password)
+	}
+	return u
+}
+
+// Client 返回走该代理的 HTTP 客户端。未启用时返回 nil，调用方继续用默认客户端。
+func (p Proxy) Client() *http.Client {
+	u := p.URL()
+	if u == nil {
+		return nil
+	}
+	var transport *http.Transport
+	if base, ok := http.DefaultTransport.(*http.Transport); ok {
+		transport = base.Clone()
+	} else {
+		transport = &http.Transport{}
+	}
+	transport.Proxy = http.ProxyURL(u)
+	return &http.Client{Transport: transport}
+}
+
+// ModelClient 仅在启用代理且翻译也走代理时返回客户端，否则返回 nil。
+func (p Proxy) ModelClient() *http.Client {
+	if !p.ForModel {
+		return nil
+	}
+	return p.Client()
 }
 
 // DefaultPath 返回 exe 同目录下的配置文件路径。
@@ -99,6 +162,18 @@ type fileConfig struct {
 	Hotkeys hotkeySection `toml:"hotkeys"`
 	Target  targetSection `toml:"target"`
 	Update  updateSection `toml:"update"`
+	Proxy   proxySection  `toml:"proxy"`
+}
+
+type proxySection struct {
+	Enabled     bool   `toml:"enabled"`
+	Type        string `toml:"type"`
+	Host        string `toml:"host"`
+	Port        int    `toml:"port"`
+	Auth        bool   `toml:"auth"`
+	Username    string `toml:"username"`
+	Password    string `toml:"password"`
+	UseForModel bool   `toml:"use_for_model"`
 }
 
 type updateSection struct {
@@ -216,7 +291,58 @@ func Parse(data []byte) (Config, error) {
 		}
 	}
 	cfg.AutoCheckUpdate = raw.Update.AutoCheck
+	proxy, err := parseProxy(raw.Proxy, md)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Proxy = proxy
 	return cfg, nil
+}
+
+func parseProxy(raw proxySection, md toml.MetaData) (Proxy, error) {
+	kind := strings.ToLower(strings.TrimSpace(raw.Type))
+	if kind == "" && !md.IsDefined("proxy", "type") {
+		kind = "http"
+	}
+	if kind != "http" && kind != "socks5" {
+		return Proxy{}, fmt.Errorf("proxy.type 只能是 http 或 socks5")
+	}
+	if raw.Port < 0 || raw.Port > 65535 {
+		return Proxy{}, fmt.Errorf("proxy.port 必须在 0 到 65535 之间")
+	}
+	host := strings.TrimSpace(raw.Host)
+	if host != "" && !validProxyHost(host) {
+		return Proxy{}, fmt.Errorf("proxy.host 不能包含协议、路径或空格")
+	}
+	username := strings.TrimSpace(raw.Username)
+	if raw.Enabled {
+		if host == "" {
+			return Proxy{}, fmt.Errorf("proxy.host 不能为空")
+		}
+		if raw.Port < 1 {
+			return Proxy{}, fmt.Errorf("proxy.port 必须在 1 到 65535 之间")
+		}
+		if raw.Auth && username == "" {
+			return Proxy{}, fmt.Errorf("proxy.username 不能为空")
+		}
+	}
+	return Proxy{
+		Enabled:  raw.Enabled,
+		Type:     kind,
+		Host:     host,
+		Port:     raw.Port,
+		Auth:     raw.Auth,
+		Username: username,
+		Password: raw.Password,
+		ForModel: raw.UseForModel,
+	}, nil
+}
+
+func validProxyHost(host string) bool {
+	if strings.Contains(host, "://") || strings.Contains(host, "/") || strings.Contains(host, "@") {
+		return false
+	}
+	return !strings.ContainsAny(host, "[] \t\r\n")
 }
 
 const (
@@ -242,6 +368,7 @@ func Default() Config {
 		TranslateAndSend: send,
 		TranslateOnly:    only,
 		Processes:        append([]string(nil), DefaultProcesses...),
+		Proxy:            Proxy{Type: "http"},
 	}
 }
 

@@ -29,6 +29,7 @@ const (
 	wsVisible      = 0x10000000
 	wsBorder       = 0x00800000
 	wsTabStop      = 0x00010000
+	wsVScroll      = 0x00200000
 	wsExTopmost    = 0x00000008
 
 	esAutohScroll = 0x0080
@@ -52,15 +53,23 @@ const (
 	vkEscape = 0x1B
 	vkTab    = 0x09
 
-	idApply   = 1
-	idCancel  = 2
-	idURL     = 101
-	idModel   = 102
-	idKey     = 103
-	idShowKey = 104
-	idTimeout = 105
-	idTabs    = 110
-	idLink    = 111
+	idApply      = 1
+	idCancel     = 2
+	idURL        = 101
+	idModel      = 102
+	idKey        = 103
+	idShowKey    = 104
+	idTimeout    = 105
+	idTabs       = 110
+	idLink       = 111
+	idProxyOn    = 201
+	idProxyType  = 202
+	idProxyHost  = 203
+	idProxyPort  = 204
+	idProxyAuth  = 205
+	idProxyUser  = 206
+	idProxyPass  = 207
+	idProxyModel = 208
 
 	pageGeneral = 0
 	pageNetwork = 1
@@ -70,6 +79,7 @@ const (
 	emSetLimitText     = 0x00C5
 	emSetPasswordChar  = 0x00CC
 	bmGetCheck         = 0x00F0
+	bmSetCheck         = 0x00F1
 	bstChecked         = 1
 	spiGetNonClient    = 0x0029
 	monitorDefaultNear = 2
@@ -760,7 +770,17 @@ func (s *settingsWindow) apply() {
 		s.reject(pageGeneral, s.general.model, "请填写模型名称")
 		return
 	}
+	proxy, focus, message, bad := s.network.read()
+	if bad {
+		s.reject(pageNetwork, focus, message)
+		return
+	}
+	cfg.Proxy = proxy
 	if err := config.Save(h.configPath, cfg); err != nil {
+		if strings.Contains(err.Error(), "proxy.") {
+			s.reject(pageNetwork, 0, err.Error())
+			return
+		}
 		s.alert(err.Error())
 		return
 	}
