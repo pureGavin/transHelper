@@ -90,6 +90,10 @@ type host struct {
 	installQueue []installOutcome
 
 	settings *settingsWindow
+
+	// 关于页的 SHA256 只算一次。这次运行里 exe 不会变。
+	digestOnce sync.Once
+	exeDigest  string
 }
 
 // notice 是一条待显示的托盘通知。info 为 true 时不响提示音。

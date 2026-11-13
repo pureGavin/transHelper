@@ -2,15 +2,45 @@ package update
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestFileSHA256(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sample.bin")
+	data := []byte("transhelper")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := FileSHA256(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(data)
+	want := hex.EncodeToString(sum[:])
+	if got != want {
+		t.Fatalf("FileSHA256 = %s，期望 %s", got, want)
+	}
+	if _, err := FileSHA256(filepath.Join(dir, "missing")); err == nil {
+		t.Fatal("缺少文件时应该失败")
+	}
+}
+
+func TestRepoURL(t *testing.T) {
+	if RepoURL != "https://github.com/pureGavin/transHelper" {
+		t.Fatalf("RepoURL = %s", RepoURL)
+	}
+}
 
 func TestCompare(t *testing.T) {
 	tests := []struct {

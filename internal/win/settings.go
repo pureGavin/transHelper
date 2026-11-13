@@ -3,6 +3,7 @@
 package win
 
 import (
+	"encoding/binary"
 	"fmt"
 	"runtime"
 	"strconv"
@@ -24,6 +25,7 @@ const (
 	wsSysMenu      = 0x00080000
 	wsClipChildren = 0x02000000
 	wsChild        = 0x40000000
+	wsClipSiblings = 0x04000000
 	wsVisible      = 0x10000000
 	wsBorder       = 0x00800000
 	wsTabStop      = 0x00010000
@@ -32,6 +34,9 @@ const (
 	esAutohScroll = 0x0080
 	esPassword    = 0x0020
 	esNumber      = 0x2000
+	esReadOnly    = 0x0800
+	esMultiLine   = 0x0004
+	esAutoVScroll = 0x0040
 	ssCenterImage = 0x0200
 	bsDefPush     = 0x0001
 	bsAutoCheck   = 0x0003
@@ -54,6 +59,13 @@ const (
 	idKey     = 103
 	idShowKey = 104
 	idTimeout = 105
+	idTabs    = 110
+	idLink    = 111
+
+	pageGeneral = 0
+	pageNetwork = 1
+	pageAbout   = 2
+	pageCount   = 3
 
 	emSetLimitText     = 0x00C5
 	emSetPasswordChar  = 0x00CC
@@ -80,17 +92,22 @@ const (
 	ttdtAutoPop  = 2
 	ttdtInitial  = 3
 	iccWin95     = 0x000000FF
+	iccLinkClass = 0x00008000
 
-	layoutMargin = 16
-	layoutLabelW = 88
-	layoutGap    = 8
-	layoutEditW  = 280
-	layoutRowH   = 26
-	layoutRowGap = 8
-	layoutBtnW   = 88
-	layoutBtnH   = 28
-	layoutCheckW = 72
-	layoutTimeW  = 80
+	layoutMargin  = 16
+	layoutLabelW  = 88
+	layoutGap     = 8
+	layoutEditW   = 280
+	layoutRowH    = 26
+	layoutRowGap  = 8
+	layoutBtnW    = 88
+	layoutBtnH    = 28
+	layoutCheckW  = 72
+	layoutTimeW   = 80
+	layoutTabTop  = 8
+	layoutTabH    = 30
+	layoutDigestH = layoutRowH * 2
+	layoutLinkH   = layoutRowH * 2
 
 	fwNormal       = 400
 	defaultCharset = 1
@@ -104,22 +121,42 @@ var (
 )
 
 // settingsWindow 是托盘菜单里的设置窗口。同一时间只开一个。
+// 顶部是三个标签，底部的应用和取消对所有页一起生效。
 type settingsWindow struct {
-	hwnd         uintptr
-	tip          uintptr
-	font         uintptr
-	dpi          uint32
-	base         config.Config
-	url          uintptr
-	model        uintptr
-	key          uintptr
-	timeout      uintptr
-	showKey      uintptr
-	applyBtn     uintptr
-	cancel       uintptr
-	versionLabel uintptr
-	labels       [4]uintptr
-	tipText      [4][]uint16
+	hwnd     uintptr
+	tip      uintptr
+	font     uintptr
+	dpi      uint32
+	base     config.Config
+	page     int
+	tabs     uintptr
+	general  generalPage
+	network  networkPage
+	about    aboutPage
+	applyBtn uintptr
+	cancel   uintptr
+	tipText  [][]uint16
+}
+
+// generalPage 是「通用」页，改模型地址、名称、密钥和超时。
+type generalPage struct {
+	labels  [4]uintptr
+	url     uintptr
+	model   uintptr
+	key     uintptr
+	timeout uintptr
+	showKey uintptr
+}
+
+func (g generalPage) controls() []uintptr {
+	out := []uintptr{g.url, g.model, g.key, g.timeout, g.showKey}
+	return append(out, g.labels[:]...)
+}
+
+// tipItem 是一条悬停提示。文字要活得和窗口一样久，控件只保存指针。
+type tipItem struct {
+	hwnd uintptr
+	text string
 }
 
 func (h *host) openSettings() {
@@ -175,7 +212,7 @@ func (s *settingsWindow) create(h *host) error {
 	if dpi, _, _ := procGetDpiForWindow.Call(hwnd); dpi != 0 {
 		s.dpi = uint32(dpi)
 	}
-	if err := s.createChildren(h.instance, h.version); err != nil {
+	if err := s.createChildren(h); err != nil {
 		s.close()
 		return err
 	}
@@ -183,10 +220,10 @@ func (s *settingsWindow) create(h *host) error {
 	s.place()
 	s.fit(true)
 	s.createTips()
-	s.fill()
+	s.fill(h)
 	procShowWindow.Call(s.hwnd, swShowNormal)
 	procSetForegroundWindow.Call(s.hwnd)
-	procSetFocus.Call(s.url)
+	procSetFocus.Call(s.general.url)
 	return nil
 }
 
@@ -224,7 +261,41 @@ func unregisterSettingsClass(instance windows.Handle) {
 	settingsClassAtom = 0
 }
 
-func (s *settingsWindow) createChildren(instance windows.Handle, version string) error {
+func (s *settingsWindow) createChildren(h *host) error {
+	// SysLink 和标签控件都要先初始化。放到创建控件之前，只做一次。
+	initCommonControls()
+	tabStyle := uintptr(wsChild | wsVisible | wsTabStop | wsClipSiblings)
+	var err error
+	if s.tabs, err = createControl("SysTabControl32", "", tabStyle, 0, 0, 10, 10, s.hwnd, idTabs, h.instance); err != nil {
+		return err
+	}
+	for _, title := range []string{"通用", "网络", "关于"} {
+		if err := s.addTab(title); err != nil {
+			return err
+		}
+	}
+	procSendMessage.Call(s.tabs, tcmSetCurSel, pageGeneral, 0)
+	if err := s.createGeneral(h.instance); err != nil {
+		return err
+	}
+	if err := s.createNetwork(h.instance); err != nil {
+		return err
+	}
+	if err := s.createAbout(h.instance); err != nil {
+		return err
+	}
+	if s.applyBtn, err = createControl("BUTTON", "应用", uintptr(wsChild|wsVisible|wsTabStop|bsDefPush), 0, 0, 10, 10, s.hwnd, idApply, h.instance); err != nil {
+		return err
+	}
+	if s.cancel, err = createControl("BUTTON", "取消", uintptr(wsChild|wsVisible|wsTabStop), 0, 0, 10, 10, s.hwnd, idCancel, h.instance); err != nil {
+		return err
+	}
+	// 父窗口还没显示。先藏起另外两页，避免一闪而过。
+	s.showPage(pageGeneral)
+	return nil
+}
+
+func (s *settingsWindow) createGeneral(instance windows.Handle) error {
 	labelStyle := uintptr(wsChild | wsVisible | ssCenterImage)
 	editStyle := uintptr(wsChild | wsVisible | wsTabStop | wsBorder | esAutohScroll)
 	labels := []string{"模型地址", "模型名称", "API Key", "超时（秒）"}
@@ -233,36 +304,36 @@ func (s *settingsWindow) createChildren(instance windows.Handle, version string)
 		if err != nil {
 			return err
 		}
-		s.labels[i] = hwnd
+		s.general.labels[i] = hwnd
 	}
 	var err error
-	if s.url, err = createControl("EDIT", "", editStyle, 0, 0, 10, 10, s.hwnd, idURL, instance); err != nil {
+	if s.general.url, err = createControl("EDIT", "", editStyle, 0, 0, 10, 10, s.hwnd, idURL, instance); err != nil {
 		return err
 	}
-	if s.model, err = createControl("EDIT", "", editStyle, 0, 0, 10, 10, s.hwnd, idModel, instance); err != nil {
+	if s.general.model, err = createControl("EDIT", "", editStyle, 0, 0, 10, 10, s.hwnd, idModel, instance); err != nil {
 		return err
 	}
-	if s.key, err = createControl("EDIT", "", editStyle|esPassword, 0, 0, 10, 10, s.hwnd, idKey, instance); err != nil {
+	if s.general.key, err = createControl("EDIT", "", editStyle|esPassword, 0, 0, 10, 10, s.hwnd, idKey, instance); err != nil {
 		return err
 	}
-	if s.showKey, err = createControl("BUTTON", "显示", uintptr(wsChild|wsVisible|wsTabStop|bsAutoCheck), 0, 0, 10, 10, s.hwnd, idShowKey, instance); err != nil {
+	if s.general.showKey, err = createControl("BUTTON", "显示", uintptr(wsChild|wsVisible|wsTabStop|bsAutoCheck), 0, 0, 10, 10, s.hwnd, idShowKey, instance); err != nil {
 		return err
 	}
-	if s.timeout, err = createControl("EDIT", "", editStyle|esNumber, 0, 0, 10, 10, s.hwnd, idTimeout, instance); err != nil {
+	if s.general.timeout, err = createControl("EDIT", "", editStyle|esNumber, 0, 0, 10, 10, s.hwnd, idTimeout, instance); err != nil {
 		return err
 	}
-	if s.applyBtn, err = createControl("BUTTON", "应用", uintptr(wsChild|wsVisible|wsTabStop|bsDefPush), 0, 0, 10, 10, s.hwnd, idApply, instance); err != nil {
-		return err
-	}
-	if s.cancel, err = createControl("BUTTON", "取消", uintptr(wsChild|wsVisible|wsTabStop), 0, 0, 10, 10, s.hwnd, idCancel, instance); err != nil {
-		return err
-	}
-	if version == "" {
-		version = "dev"
-	}
-	// 和按钮同一行，ssCenterImage 让文字在按钮高度里竖直居中。
-	if s.versionLabel, err = createControl("STATIC", "版本 "+version, labelStyle, 0, 0, 10, 10, s.hwnd, 0, instance); err != nil {
-		return err
+	return nil
+}
+
+func (s *settingsWindow) addTab(title string) error {
+	text := utf16String(title)
+	item := tabItem{Mask: tcifText, Text: &text[0]}
+	// 序号大于现有个数时，新标签加到末尾。
+	index, _, _ := procSendMessage.Call(s.tabs, tcmInsertItemW, uintptr(pageCount), uintptr(unsafe.Pointer(&item)))
+	runtime.KeepAlive(&item)
+	runtime.KeepAlive(text)
+	if int32(index) < 0 {
+		return fmt.Errorf("添加标签「%s」失败", title)
 	}
 	return nil
 }
@@ -289,19 +360,27 @@ func createControl(className, text string, style uintptr, x, y, w, h int, parent
 	return hwnd, nil
 }
 
-func (s *settingsWindow) fill() {
-	setWindowText(s.url, s.base.BaseURL)
-	setWindowText(s.model, s.base.Model)
-	setWindowText(s.key, s.base.APIKey)
+func (s *settingsWindow) fill(h *host) {
+	setWindowText(s.general.url, s.base.BaseURL)
+	setWindowText(s.general.model, s.base.Model)
+	setWindowText(s.general.key, s.base.APIKey)
 	seconds := int(s.base.Timeout / time.Second)
 	if seconds <= 0 {
 		seconds = 20
 	}
-	setWindowText(s.timeout, strconv.Itoa(seconds))
-	procSendMessage.Call(s.url, emSetLimitText, 2048, 0)
-	procSendMessage.Call(s.model, emSetLimitText, 256, 0)
-	procSendMessage.Call(s.key, emSetLimitText, 512, 0)
-	procSendMessage.Call(s.timeout, emSetLimitText, 3, 0)
+	setWindowText(s.general.timeout, strconv.Itoa(seconds))
+	procSendMessage.Call(s.general.url, emSetLimitText, 2048, 0)
+	procSendMessage.Call(s.general.model, emSetLimitText, 256, 0)
+	procSendMessage.Call(s.general.key, emSetLimitText, 512, 0)
+	procSendMessage.Call(s.general.timeout, emSetLimitText, 3, 0)
+	version := ""
+	digest := "无法读取"
+	if h != nil {
+		version = h.version
+		digest = h.fileDigest()
+	}
+	s.about.fill(version, runtime.Version(), digest)
+	s.network.fill(s.base)
 }
 
 func (s *settingsWindow) scale(v int) int {
@@ -312,17 +391,53 @@ func (s *settingsWindow) scale(v int) int {
 	return v * int(dpi) / 96
 }
 
+func generalBody() int {
+	return 4 * (layoutRowH + layoutRowGap)
+}
+
 func (s *settingsWindow) clientSize() (int32, int32) {
 	w := s.scale(layoutMargin + layoutLabelW + layoutGap + layoutEditW + layoutMargin)
-	h := s.scale(layoutMargin + 4*(layoutRowH+layoutRowGap) + 8 + layoutBtnH + layoutMargin)
+	body := generalBody()
+	if about := aboutBody(); about > body {
+		body = about
+	}
+	if net := networkBody(); net > body {
+		body = net
+	}
+	h := s.scale(layoutTabTop + layoutTabH + layoutRowGap + body + 8 + layoutBtnH + layoutMargin)
 	return int32(w), int32(h)
 }
 
+func (s *settingsWindow) contentTop() int {
+	return s.scale(layoutTabTop + layoutTabH + layoutRowGap)
+}
+
 func (s *settingsWindow) place() {
-	edits := []uintptr{s.url, s.model, s.key, s.timeout}
+	s.placeTabs()
+	s.placeGeneral()
+	s.network.place(s)
+	s.placeAbout()
+	s.placeButtons()
+}
+
+func (s *settingsWindow) placeTabs() {
+	clientW, _ := s.clientSize()
+	x := s.scale(layoutMargin)
+	w := int(clientW) - 2*x
+	if w < s.scale(40) {
+		w = s.scale(40)
+	}
+	// 标签控件只占顶部一条。页面控件画在下面的窗口背景上，
+	// 不放进标签控件，避免主题底色不一致，也避免两层控件叠在一起画。
+	moveWindow(s.tabs, x, s.scale(layoutTabTop), w, s.scale(layoutTabH))
+}
+
+func (s *settingsWindow) placeGeneral() {
+	edits := []uintptr{s.general.url, s.general.model, s.general.key, s.general.timeout}
+	top := s.contentTop()
 	for i := 0; i < 4; i++ {
-		y := s.scale(layoutMargin + i*(layoutRowH+layoutRowGap))
-		moveWindow(s.labels[i], s.scale(layoutMargin), y, s.scale(layoutLabelW), s.scale(layoutRowH))
+		y := top + s.scale(i*(layoutRowH+layoutRowGap))
+		moveWindow(s.general.labels[i], s.scale(layoutMargin), y, s.scale(layoutLabelW), s.scale(layoutRowH))
 		editW := s.scale(layoutEditW)
 		switch i {
 		case 2:
@@ -333,20 +448,92 @@ func (s *settingsWindow) place() {
 		x := s.scale(layoutMargin + layoutLabelW + layoutGap)
 		moveWindow(edits[i], x, y, editW, s.scale(layoutRowH))
 		if i == 2 {
-			moveWindow(s.showKey, x+editW+s.scale(layoutGap), y, s.scale(layoutCheckW), s.scale(layoutRowH))
+			moveWindow(s.general.showKey, x+editW+s.scale(layoutGap), y, s.scale(layoutCheckW), s.scale(layoutRowH))
 		}
 	}
-	btnY := s.scale(layoutMargin + 4*(layoutRowH+layoutRowGap) + 8)
+}
+
+func (s *settingsWindow) placeButtons() {
+	_, ch := s.clientSize()
+	btnY := int(ch) - s.scale(layoutMargin+layoutBtnH)
 	clientW, _ := s.clientSize()
 	cancelX := int(clientW) - s.scale(layoutMargin) - s.scale(layoutBtnW)
 	applyX := cancelX - s.scale(layoutGap) - s.scale(layoutBtnW)
 	moveWindow(s.applyBtn, applyX, btnY, s.scale(layoutBtnW), s.scale(layoutBtnH))
 	moveWindow(s.cancel, cancelX, btnY, s.scale(layoutBtnW), s.scale(layoutBtnH))
-	versionW := applyX - s.scale(layoutMargin) - s.scale(layoutGap)
-	if versionW < s.scale(40) {
-		versionW = s.scale(40)
+}
+
+func (s *settingsWindow) showPage(page int) {
+	s.page = page
+	showControls(s.general.controls(), page == pageGeneral)
+	s.network.show(page == pageNetwork)
+	showControls(s.about.controls(), page == pageAbout)
+}
+
+func showControls(hwnds []uintptr, show bool) {
+	cmd := uintptr(swHide)
+	if show {
+		// 不用 SW_SHOW。它会把焦点交给最后一个显示出来的控件。
+		cmd = swShowNA
 	}
-	moveWindow(s.versionLabel, s.scale(layoutMargin), btnY, versionW, s.scale(layoutBtnH))
+	for _, hwnd := range hwnds {
+		if hwnd != 0 {
+			procShowWindow.Call(hwnd, cmd)
+		}
+	}
+}
+
+func (s *settingsWindow) currentTab() int {
+	if s.tabs == 0 {
+		return pageGeneral
+	}
+	got, _, _ := procSendMessage.Call(s.tabs, tcmGetCurSel, 0, 0)
+	if int32(got) < 0 || int(got) >= pageCount {
+		return pageGeneral
+	}
+	return int(got)
+}
+
+func (s *settingsWindow) selectPage(page int) {
+	if page < 0 || page >= pageCount {
+		page = pageGeneral
+	}
+	if s.tabs != 0 {
+		procSendMessage.Call(s.tabs, tcmSetCurSel, uintptr(page), 0)
+	}
+	s.showPage(page)
+	s.focusPage()
+}
+
+func (s *settingsWindow) syncPage() {
+	s.showPage(s.currentTab())
+	s.focusPage()
+}
+
+func (s *settingsWindow) cyclePage(back bool) {
+	n := s.currentTab()
+	if back {
+		n = (n + pageCount - 1) % pageCount
+	} else {
+		n = (n + 1) % pageCount
+	}
+	s.selectPage(n)
+}
+
+func (s *settingsWindow) focusPage() {
+	if s.hwnd == 0 || s.tabs == 0 {
+		return
+	}
+	next, _, _ := procGetNextDlgTabItem.Call(s.hwnd, s.tabs, 0)
+	if next != 0 && next != s.applyBtn && next != s.cancel {
+		procSetFocus.Call(next)
+		return
+	}
+	procSetFocus.Call(s.tabs)
+}
+
+func (s *settingsWindow) dropDownOpen() bool {
+	return s.network.dropped()
 }
 
 func (s *settingsWindow) fit(center bool) {
@@ -411,8 +598,10 @@ func (s *settingsWindow) applyFont() {
 }
 
 func (s *settingsWindow) controls() []uintptr {
-	out := []uintptr{s.url, s.model, s.key, s.timeout, s.showKey, s.applyBtn, s.cancel, s.versionLabel}
-	out = append(out, s.labels[:]...)
+	out := []uintptr{s.tabs, s.applyBtn, s.cancel}
+	out = append(out, s.general.controls()...)
+	out = append(out, s.network.controls()...)
+	out = append(out, s.about.controls()...)
 	return out
 }
 
@@ -477,21 +666,26 @@ func (s *settingsWindow) createTips() {
 	procSendMessage.Call(tip, ttmSetDelay, ttdtInitial, 800)
 	procSendMessage.Call(tip, ttmSetDelay, ttdtAutoPop, 10000)
 
-	texts := []string{
-		"OpenAI 兼容接口地址，末尾保留 /v1",
-		"要和模型服务上的名称一致",
-		"不需要时留空，只保存在本机配置文件",
-		"单次翻译最多等待 1 到 120 秒，超时不改动输入框",
+	items := []tipItem{
+		{s.general.url, "OpenAI 兼容接口地址，末尾保留 /v1"},
+		{s.general.model, "要和模型服务上的名称一致"},
+		{s.general.key, "不需要时留空，只保存在本机配置文件"},
+		{s.general.timeout, "单次翻译最多等待 1 到 120 秒，超时不改动输入框"},
+		{s.about.digest, "和 Release 说明里的值核对"},
 	}
-	edits := []uintptr{s.url, s.model, s.key, s.timeout}
-	for i, edit := range edits {
+	items = append(items, s.network.tips()...)
+	s.tipText = make([][]uint16, len(items))
+	for i, item := range items {
+		if item.hwnd == 0 || item.text == "" {
+			continue
+		}
 		// 文字要活得和窗口一样久。控件只保存指针，不一定自己复制。
-		s.tipText[i] = utf16String(texts[i])
+		s.tipText[i] = utf16String(item.text)
 		info := toolInfo{
 			Size:  uint32(unsafe.Sizeof(toolInfo{})),
 			Flags: ttfIDIsHWND | ttfSubclass,
 			Hwnd:  s.hwnd,
-			ID:    edit,
+			ID:    item.hwnd,
 			Text:  &s.tipText[i][0],
 		}
 		procSendMessage.Call(tip, ttmAddTool, 0, uintptr(unsafe.Pointer(&info)))
@@ -506,12 +700,39 @@ func (s *settingsWindow) updateTipWidth() {
 	procSendMessage.Call(s.tip, ttmSetMaxTip, 0, uintptr(s.scale(280)))
 }
 
-func initTooltips() {
+func initCommonControls() {
 	commonControls.Do(func() {
-		icc := initCommonControlsEx{Size: uint32(unsafe.Sizeof(initCommonControlsEx{})), ICC: iccWin95}
+		icc := initCommonControlsEx{Size: uint32(unsafe.Sizeof(initCommonControlsEx{})), ICC: iccWin95 | iccLinkClass}
 		procInitCommonControlsEx.Call(uintptr(unsafe.Pointer(&icc)))
 		runtime.KeepAlive(&icc)
 	})
+}
+
+func initTooltips() {
+	initCommonControls()
+}
+
+func (s *settingsWindow) onNotify(wParam, lParam uintptr) {
+	switch wParam {
+	case idTabs:
+		// 不读 lParam。标签页当前选中哪一页，问控件自己就行。
+		s.syncPage()
+	case idLink:
+		code := notifyCode(lParam)
+		if code == nmClick || code == nmReturn {
+			s.about.openLink()
+		}
+	}
+}
+
+// notifyCode 从 WM_NOTIFY 的 lParam 里取出 NMHDR.code。
+// 按字节拷出来，不把消息参数转回指针，避免 go vet 的 unsafeptr 报警。
+func notifyCode(lParam uintptr) int32 {
+	buf := copyFromMemory(lParam, int(unsafe.Sizeof(nmHdr{})))
+	if len(buf) < 20 {
+		return 0
+	}
+	return int32(binary.LittleEndian.Uint32(buf[16:20]))
 }
 
 func (s *settingsWindow) apply() {
@@ -519,24 +740,24 @@ func (s *settingsWindow) apply() {
 	if s.hwnd == 0 || h == nil {
 		return
 	}
-	seconds, err := strconv.Atoi(strings.TrimSpace(windowText(s.timeout)))
+	seconds, err := strconv.Atoi(strings.TrimSpace(windowText(s.general.timeout)))
 	if err != nil || seconds < 1 || seconds > 120 {
-		s.alert("超时必须是 1 到 120 的整数")
+		s.reject(pageGeneral, s.general.timeout, "超时必须是 1 到 120 的整数")
 		return
 	}
 	cfg := s.base
-	cfg.BaseURL = strings.TrimSpace(windowText(s.url))
-	cfg.Model = strings.TrimSpace(windowText(s.model))
-	cfg.APIKey = strings.TrimSpace(windowText(s.key))
+	cfg.BaseURL = strings.TrimSpace(windowText(s.general.url))
+	cfg.Model = strings.TrimSpace(windowText(s.general.model))
+	cfg.APIKey = strings.TrimSpace(windowText(s.general.key))
 	cfg.Timeout = time.Duration(seconds) * time.Second
 	// 窗口开着时，菜单可能已经改过自动检查。以内存里的为准，避免应用时把它改回去。
 	cfg.AutoCheckUpdate = h.cfg.AutoCheckUpdate
 	if cfg.BaseURL == "" {
-		s.alert("请填写模型地址")
+		s.reject(pageGeneral, s.general.url, "请填写模型地址")
 		return
 	}
 	if cfg.Model == "" {
-		s.alert("请填写模型名称")
+		s.reject(pageGeneral, s.general.model, "请填写模型名称")
 		return
 	}
 	if err := config.Save(h.configPath, cfg); err != nil {
@@ -579,13 +800,22 @@ func (h *host) applyConfig(cfg config.Config) {
 }
 
 func (s *settingsWindow) syncPassword() {
-	state, _, _ := procSendMessage.Call(s.showKey, bmGetCheck, 0, 0)
+	state, _, _ := procSendMessage.Call(s.general.showKey, bmGetCheck, 0, 0)
 	char := uintptr('*')
 	if state == bstChecked {
 		char = 0
 	}
-	procSendMessage.Call(s.key, emSetPasswordChar, char, 0)
-	procInvalidateRect.Call(s.key, 0, 1)
+	procSendMessage.Call(s.general.key, emSetPasswordChar, char, 0)
+	procInvalidateRect.Call(s.general.key, 0, 1)
+}
+
+// reject 切到出错的那一页，把焦点放回控件，再提示。
+func (s *settingsWindow) reject(page int, focus uintptr, text string) {
+	s.selectPage(page)
+	if focus != 0 {
+		procSetFocus.Call(focus)
+	}
+	s.alert(text)
 }
 
 func (s *settingsWindow) alert(text string) {
@@ -639,15 +869,33 @@ func (h *host) handleSettingsKey(m *msg) bool {
 	if s == nil || s.hwnd == 0 || m.Message != wmKeyDown || !s.owns(m.Hwnd) {
 		return false
 	}
+	ctrl, _, _ := procGetKeyState.Call(vkControl)
+	ctrlDown := ctrl&0x8000 != 0
 	switch m.WParam {
 	case vkEscape:
+		// 下拉框展开时，Esc 先收起列表，不关窗口。
+		if s.dropDownOpen() {
+			return false
+		}
 		s.close()
 		return true
 	case vkTab:
-		state, _, _ := procGetKeyState.Call(vkShift)
-		s.nextTab(state&0x8000 != 0)
+		if ctrlDown {
+			shift, _, _ := procGetKeyState.Call(vkShift)
+			s.cyclePage(shift&0x8000 != 0)
+			return true
+		}
+		shift, _, _ := procGetKeyState.Call(vkShift)
+		s.nextTab(shift&0x8000 != 0)
 		return true
 	case vkReturn:
+		if s.dropDownOpen() {
+			return false
+		}
+		if m.Hwnd == s.about.link {
+			s.about.openLink()
+			return true
+		}
 		if !isButton(m.Hwnd) {
 			s.apply()
 			return true
@@ -697,7 +945,12 @@ func settingsWndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 			s.close()
 		case idShowKey:
 			s.syncPassword()
+		default:
+			s.network.onCommand(wParam & 0xFFFF)
 		}
+		return 0
+	case wmNotify:
+		s.onNotify(wParam, lParam)
 		return 0
 	case wmClose:
 		s.close()
@@ -805,6 +1058,25 @@ type monitorInfo struct {
 	Monitor rect
 	Work    rect
 	Flags   uint32
+}
+
+// nmHdr 对应 NMHDR。64 位上含末尾对齐是 24 字节。
+type nmHdr struct {
+	From uintptr
+	ID   uintptr
+	Code uint32
+	_    uint32
+}
+
+// tabItem 对应 TCITEMW。64 位上 pszText 按 8 字节对齐，整个结构是 40 字节。
+type tabItem struct {
+	Mask      uint32
+	State     uint32
+	StateMask uint32
+	Text      *uint16
+	TextMax   int32
+	Image     int32
+	Param     uintptr
 }
 
 // toolInfo 对应 TOOLINFOW。64 位上含 lpReserved 的结构是 72 字节。

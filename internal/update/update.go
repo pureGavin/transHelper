@@ -3,12 +3,15 @@ package update
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -17,11 +20,27 @@ import (
 const (
 	// LatestURL 是本仓库最新正式版的 API 地址。
 	LatestURL = "https://api.github.com/repos/pureGavin/transHelper/releases/latest"
+	// RepoURL 是本仓库的 GitHub 页面。
+	RepoURL = "https://github.com/pureGavin/transHelper"
 
 	maxBodyBytes     = 1 << 20
 	defaultTimeout   = 10 * time.Second
 	defaultUserAgent = "transHelper"
 )
+
+// FileSHA256 计算 path 的 SHA256，返回小写十六进制。
+func FileSHA256(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
 
 // ErrNoRelease 表示仓库还没有任何正式版。
 var ErrNoRelease = errors.New("还没有正式版本")

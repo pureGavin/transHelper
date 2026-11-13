@@ -22,6 +22,8 @@ func TestWin32StructSizes(t *testing.T) {
 		{"NONCLIENTMETRICSW", unsafe.Sizeof(nonClientMetrics{}), 504},
 		{"MONITORINFO", unsafe.Sizeof(monitorInfo{}), 40},
 		{"TOOLINFOW", unsafe.Sizeof(toolInfo{}), 72},
+		{"TCITEMW", unsafe.Sizeof(tabItem{}), 40},
+		{"NMHDR", unsafe.Sizeof(nmHdr{}), 24},
 	}
 	for _, check := range checks {
 		if check.got != check.want {

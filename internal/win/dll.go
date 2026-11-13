@@ -98,6 +98,7 @@ const (
 
 	wmHotkey       = 0x0312
 	wmClose        = 0x0010
+	wmNotify       = 0x004E
 	wmNull         = 0x0000
 	wmRButtonUp    = 0x0205
 	wmContextMenu  = 0x007B
@@ -175,6 +176,19 @@ const (
 	ninBalloonTimeout   = 0x0404
 	ninBalloonUserClick = 0x0405
 	swShowNormal        = 1
+	swHide              = 0
+	// swShowNA 只显示，不把焦点抢走。切标签时用来露出当前页的控件。
+	swShowNA = 8
+
+	tcmFirst       = 0x1300
+	tcmGetCurSel   = tcmFirst + 11
+	tcmSetCurSel   = tcmFirst + 12
+	tcmInsertItemW = tcmFirst + 62
+	tcifText       = 0x0001
+
+	// nmClick 和 nmReturn 是 NM_CLICK、NM_RETURN，相对 NM_FIRST 的负值。
+	nmClick  = -2
+	nmReturn = -4
 
 	hotkeySend = 1
 	hotkeyOnly = 2
