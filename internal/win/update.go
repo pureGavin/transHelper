@@ -107,6 +107,8 @@ func (h *host) showUpdate(item updateOutcome) {
 		h.notifiedVersion = item.release.Version
 	}
 	switch action {
+	case update.ActionInstallNow:
+		h.startInstall(item.release, message)
 	case update.ActionInstall:
 		h.infoAction(message, trayAction{install: true, rel: item.release, page: item.release.URL})
 	case update.ActionOpen:
@@ -163,13 +165,13 @@ func (h *host) openBalloon() {
 	h.clickAction = trayAction{}
 	switch {
 	case action.install:
-		h.startInstall(action.rel)
+		h.startInstall(action.rel, "正在下载更新")
 	case action.open && update.AllowedPage(action.page):
 		openBrowser(action.page)
 	}
 }
 
-func (h *host) startInstall(rel update.Release) {
+func (h *host) startInstall(rel update.Release, message string) {
 	if !rel.Asset.Available() {
 		if update.AllowedPage(rel.URL) {
 			openBrowser(rel.URL)
@@ -180,7 +182,10 @@ func (h *host) startInstall(rel update.Release) {
 		h.info("正在更新")
 		return
 	}
-	h.info("正在下载更新")
+	if message == "" {
+		message = "正在下载更新"
+	}
+	h.info(message)
 	client := h.cfg.Proxy.Client()
 	go h.downloadUpdate(rel, client)
 }

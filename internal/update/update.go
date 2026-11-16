@@ -75,7 +75,7 @@ type Release struct {
 	Asset Asset
 }
 
-// Action 是点击更新通知后要做的事。
+// Action 是检查更新之后要做的事。
 type Action int
 
 const (
@@ -83,8 +83,10 @@ const (
 	ActionNone Action = iota
 	// ActionOpen 表示打开 Release 页面。
 	ActionOpen
-	// ActionInstall 表示下载并替换当前程序。
+	// ActionInstall 表示等用户点击通知后再下载并替换。
 	ActionInstall
+	// ActionInstallNow 表示立刻下载并替换，不用再点通知。
+	ActionInstallNow
 )
 
 type version struct {
@@ -156,7 +158,8 @@ func parseVersion(v string) (version, error) {
 // Describe 决定这次检查要不要通知用户，以及点击通知后做什么。
 // manual 为 false 时，只有发现更新的正式版才通知。
 // already 是本轮运行里自动检查已经提示过的版本，同一个版本不再重复提示。
-// 有合格安装包时动作为安装；没有时退回打开下载页。本机构建只说明，不带动作。
+// 有合格安装包时，手动检查立刻安装，自动检查等用户点击通知。
+// 没有安装包时退回打开下载页。本机构建只说明，不带动作。
 func Describe(current string, manual bool, already string, rel Release, err error) (message string, action Action, show bool) {
 	if err != nil {
 		if !manual {
@@ -190,6 +193,9 @@ func Describe(current string, manual bool, already string, rel Release, err erro
 		return "", ActionNone, false
 	}
 	if rel.Asset.Available() {
+		if manual {
+			return "发现新版本 " + rel.Version + "，正在下载更新", ActionInstallNow, true
+		}
 		return "发现新版本 " + rel.Version + "，点击这里更新", ActionInstall, true
 	}
 	return "发现新版本 " + rel.Version + "，点击打开下载页", ActionOpen, true

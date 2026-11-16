@@ -177,7 +177,7 @@ func TestDescribe(t *testing.T) {
 	}
 
 	message, action, show = Describe("2026.11.1", true, "", withAsset, nil)
-	if !show || message != "发现新版本 2026.11.2，点击这里更新" || action != ActionInstall {
+	if !show || message != "发现新版本 2026.11.2，正在下载更新" || action != ActionInstallNow {
 		t.Fatalf("可安装的新版本: %q %v %v", message, action, show)
 	}
 	message, action, show = Describe("2026.11.1", true, "", rel, nil)
@@ -185,9 +185,9 @@ func TestDescribe(t *testing.T) {
 		t.Fatalf("没有安装包时: %q %v %v", message, action, show)
 	}
 
-	_, action, show = Describe("2026.11.1", false, "", withAsset, nil)
-	if !show || action != ActionInstall {
-		t.Fatal("自动检查发现可安装的新版本时应该通知")
+	message, action, show = Describe("2026.11.1", false, "", withAsset, nil)
+	if !show || message != "发现新版本 2026.11.2，点击这里更新" || action != ActionInstall {
+		t.Fatalf("自动检查发现可安装的新版本时应该通知: %q %v %v", message, action, show)
 	}
 	_, _, show = Describe("2026.11.1", false, "2026.11.2", withAsset, nil)
 	if show {
