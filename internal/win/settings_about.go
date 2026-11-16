@@ -33,33 +33,33 @@ func (s *settingsWindow) createAbout(instance windows.Handle) error {
 	labelStyle := uintptr(wsChild | wsVisible | ssCenterImage)
 	labels := []string{"版本", "Go 版本", "SHA256", "GitHub"}
 	for i, text := range labels {
-		hwnd, err := createControl("STATIC", text, labelStyle, 0, 0, 10, 10, s.hwnd, 0, instance)
+		hwnd, err := createControl("STATIC", text, labelStyle, 0, 0, 10, 10, s.body, 0, instance)
 		if err != nil {
 			return err
 		}
 		s.about.labels[i] = hwnd
 	}
 	var err error
-	if s.about.version, err = createControl("STATIC", "", labelStyle, 0, 0, 10, 10, s.hwnd, 0, instance); err != nil {
+	if s.about.version, err = createControl("STATIC", "", labelStyle, 0, 0, 10, 10, s.body, 0, instance); err != nil {
 		return err
 	}
-	if s.about.goVer, err = createControl("STATIC", "", labelStyle, 0, 0, 10, 10, s.hwnd, 0, instance); err != nil {
+	if s.about.goVer, err = createControl("STATIC", "", labelStyle, 0, 0, 10, 10, s.body, 0, instance); err != nil {
 		return err
 	}
 	// 只读多行，可以选中复制。不设 ES_AUTOHSCROLL，64 位十六进制会折行。
 	digestStyle := uintptr(wsChild | wsVisible | wsTabStop | wsBorder | esReadOnly | esMultiLine | esAutoVScroll)
-	if s.about.digest, err = createControl("EDIT", "", digestStyle, 0, 0, 10, 10, s.hwnd, 0, instance); err != nil {
+	if s.about.digest, err = createControl("EDIT", "", digestStyle, 0, 0, 10, 10, s.body, 0, instance); err != nil {
 		return err
 	}
 	linkText := `<A HREF="` + update.RepoURL + `">` + update.RepoURL + `</A>`
 	linkStyle := uintptr(wsChild | wsVisible | wsTabStop)
-	if s.about.link, err = createControl("SysLink", linkText, linkStyle, 0, 0, 10, 10, s.hwnd, idLink, instance); err != nil {
+	if s.about.link, err = createControl("SysLink", linkText, linkStyle, 0, 0, 10, 10, s.body, idLink, instance); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *settingsWindow) placeAbout() {
+func (s *settingsWindow) placeAbout(top, width int) {
 	rows := []struct {
 		label  uintptr
 		value  uintptr
@@ -72,11 +72,12 @@ func (s *settingsWindow) placeAbout() {
 	}
 	labelX := s.scale(layoutMargin)
 	valueX := s.scale(layoutMargin + layoutLabelW + layoutGap)
-	y := s.contentTop()
+	valueW := s.valueWidth(width)
+	y := top
 	for _, row := range rows {
 		h := s.scale(row.height)
 		moveWindow(row.label, labelX, y, s.scale(layoutLabelW), s.scale(layoutRowH))
-		moveWindow(row.value, valueX, y, s.scale(layoutEditW), h)
+		moveWindow(row.value, valueX, y, valueW, h)
 		y += h + s.scale(layoutRowGap)
 	}
 }

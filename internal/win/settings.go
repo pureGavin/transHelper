@@ -19,10 +19,12 @@ import (
 )
 
 const (
-	settingsStyle = wsCaption | wsSysMenu | wsClipChildren
+	// WS_THICKFRAME 让上下边可以拖。左右边在 WM_NCHITTEST 里改成不能拖。
+	settingsStyle = wsCaption | wsSysMenu | wsThickFrame | wsClipChildren
 
 	wsCaption      = 0x00C00000
 	wsSysMenu      = 0x00080000
+	wsThickFrame   = 0x00040000
 	wsClipChildren = 0x02000000
 	wsChild        = 0x40000000
 	wsClipSiblings = 0x04000000
@@ -83,6 +85,7 @@ const (
 	bstChecked         = 1
 	spiGetNonClient    = 0x0029
 	monitorDefaultNear = 2
+	colorBtnFace       = 15
 	colorBtnFaceBrush  = 16 // COLOR_BTNFACE + 1
 	idcArrow           = 32512
 
@@ -132,20 +135,25 @@ var (
 
 // settingsWindow 是托盘菜单里的设置窗口。同一时间只开一个。
 // 顶部是三个标签，底部的应用和取消对所有页一起生效。
+// 中间的 body 可以竖向滚动，标签和按钮不跟着动。
 type settingsWindow struct {
-	hwnd     uintptr
-	tip      uintptr
-	font     uintptr
-	dpi      uint32
-	base     config.Config
-	page     int
-	tabs     uintptr
-	general  generalPage
-	network  networkPage
-	about    aboutPage
-	applyBtn uintptr
-	cancel   uintptr
-	tipText  [][]uint16
+	hwnd      uintptr
+	body      uintptr
+	tip       uintptr
+	font      uintptr
+	dpi       uint32
+	base      config.Config
+	page      int
+	scrollPos int
+	wheelAcc  int
+	laying    bool
+	tabs      uintptr
+	general   generalPage
+	network   networkPage
+	about     aboutPage
+	applyBtn  uintptr
+	cancel    uintptr
+	tipText   [][]uint16
 }
 
 // generalPage 是「通用」页，改模型地址、名称、密钥和超时。
@@ -227,8 +235,9 @@ func (s *settingsWindow) create(h *host) error {
 		return err
 	}
 	s.applyFont()
-	s.place()
+	// 先定好窗口大小，再按实际客户区摆控件。SetWindowPos 会发 WM_SIZE，那里也会 place。
 	s.fit(true)
+	s.place()
 	s.createTips()
 	s.fill(h)
 	procShowWindow.Call(s.hwnd, swShowNormal)
@@ -263,12 +272,8 @@ func registerSettingsClass(instance windows.Handle, icon uintptr) error {
 }
 
 func unregisterSettingsClass(instance windows.Handle) {
-	if settingsClassAtom == 0 || len(settingsClassName) == 0 {
-		return
-	}
-	procUnregisterClass.Call(uintptr(unsafe.Pointer(&settingsClassName[0])), uintptr(instance))
-	runtime.KeepAlive(settingsClassName)
-	settingsClassAtom = 0
+	unregisterClass(&settingsClassName, &settingsClassAtom, instance)
+	unregisterBodyClass(instance)
 }
 
 func (s *settingsWindow) createChildren(h *host) error {
@@ -285,6 +290,9 @@ func (s *settingsWindow) createChildren(h *host) error {
 		}
 	}
 	procSendMessage.Call(s.tabs, tcmSetCurSel, pageGeneral, 0)
+	if err := s.createBody(h.instance); err != nil {
+		return err
+	}
 	if err := s.createGeneral(h.instance); err != nil {
 		return err
 	}
@@ -310,26 +318,26 @@ func (s *settingsWindow) createGeneral(instance windows.Handle) error {
 	editStyle := uintptr(wsChild | wsVisible | wsTabStop | wsBorder | esAutohScroll)
 	labels := []string{"模型地址", "模型名称", "API Key", "超时（秒）"}
 	for i, text := range labels {
-		hwnd, err := createControl("STATIC", text, labelStyle, 0, 0, 10, 10, s.hwnd, 0, instance)
+		hwnd, err := createControl("STATIC", text, labelStyle, 0, 0, 10, 10, s.body, 0, instance)
 		if err != nil {
 			return err
 		}
 		s.general.labels[i] = hwnd
 	}
 	var err error
-	if s.general.url, err = createControl("EDIT", "", editStyle, 0, 0, 10, 10, s.hwnd, idURL, instance); err != nil {
+	if s.general.url, err = createControl("EDIT", "", editStyle, 0, 0, 10, 10, s.body, idURL, instance); err != nil {
 		return err
 	}
-	if s.general.model, err = createControl("EDIT", "", editStyle, 0, 0, 10, 10, s.hwnd, idModel, instance); err != nil {
+	if s.general.model, err = createControl("EDIT", "", editStyle, 0, 0, 10, 10, s.body, idModel, instance); err != nil {
 		return err
 	}
-	if s.general.key, err = createControl("EDIT", "", editStyle|esPassword, 0, 0, 10, 10, s.hwnd, idKey, instance); err != nil {
+	if s.general.key, err = createControl("EDIT", "", editStyle|esPassword, 0, 0, 10, 10, s.body, idKey, instance); err != nil {
 		return err
 	}
-	if s.general.showKey, err = createControl("BUTTON", "显示", uintptr(wsChild|wsVisible|wsTabStop|bsAutoCheck), 0, 0, 10, 10, s.hwnd, idShowKey, instance); err != nil {
+	if s.general.showKey, err = createControl("BUTTON", "显示", uintptr(wsChild|wsVisible|wsTabStop|bsAutoCheck), 0, 0, 10, 10, s.body, idShowKey, instance); err != nil {
 		return err
 	}
-	if s.general.timeout, err = createControl("EDIT", "", editStyle|esNumber, 0, 0, 10, 10, s.hwnd, idTimeout, instance); err != nil {
+	if s.general.timeout, err = createControl("EDIT", "", editStyle|esNumber, 0, 0, 10, 10, s.body, idTimeout, instance); err != nil {
 		return err
 	}
 	return nil
@@ -414,7 +422,8 @@ func (s *settingsWindow) clientSize() (int32, int32) {
 	if net := networkBody(); net > body {
 		body = net
 	}
-	h := s.scale(layoutTabTop + layoutTabH + layoutRowGap + body + 8 + layoutBtnH + layoutMargin)
+	// 分段取整，和 placeBody 用的是同一套减法，完整高度下内容区刚好放下，不会多出滚动条。
+	h := s.contentTop() + s.scale(body) + s.scale(8+layoutBtnH+layoutMargin)
 	return int32(w), int32(h)
 }
 
@@ -423,35 +432,49 @@ func (s *settingsWindow) contentTop() int {
 }
 
 func (s *settingsWindow) place() {
-	s.placeTabs()
-	s.placeGeneral()
-	s.network.place(s)
-	s.placeAbout()
-	s.placeButtons()
+	if s.hwnd == 0 || s.tabs == 0 || s.body == 0 {
+		return
+	}
+	clientW, clientH := clientSizeOf(s.hwnd)
+	s.placeTabs(clientW)
+	s.placeButtons(clientW, clientH)
+	s.placeBody(clientW, clientH)
+	s.layoutBody()
 }
 
-func (s *settingsWindow) placeTabs() {
-	clientW, _ := s.clientSize()
+func (s *settingsWindow) placeTabs(clientW int) {
 	x := s.scale(layoutMargin)
-	w := int(clientW) - 2*x
+	w := clientW - 2*x
 	if w < s.scale(40) {
 		w = s.scale(40)
 	}
-	// 标签控件只占顶部一条。页面控件画在下面的窗口背景上，
+	// 标签控件只占顶部一条。页面控件画在下面的内容区里，
 	// 不放进标签控件，避免主题底色不一致，也避免两层控件叠在一起画。
 	moveWindow(s.tabs, x, s.scale(layoutTabTop), w, s.scale(layoutTabH))
 }
 
-func (s *settingsWindow) placeGeneral() {
+// valueWidth 是标签右边输入框的宽度。width 是内容区客户区宽度，已经不含滚动条。
+func (s *settingsWindow) valueWidth(width int) int {
+	w := width - s.scale(layoutMargin+layoutLabelW+layoutGap+layoutMargin)
+	if w < s.scale(40) {
+		return s.scale(40)
+	}
+	return w
+}
+
+func (s *settingsWindow) placeGeneral(top, width int) {
 	edits := []uintptr{s.general.url, s.general.model, s.general.key, s.general.timeout}
-	top := s.contentTop()
+	valueW := s.valueWidth(width)
 	for i := 0; i < 4; i++ {
 		y := top + s.scale(i*(layoutRowH+layoutRowGap))
 		moveWindow(s.general.labels[i], s.scale(layoutMargin), y, s.scale(layoutLabelW), s.scale(layoutRowH))
-		editW := s.scale(layoutEditW)
+		editW := valueW
 		switch i {
 		case 2:
-			editW = s.scale(layoutEditW - layoutCheckW - layoutGap)
+			editW = valueW - s.scale(layoutCheckW+layoutGap)
+			if editW < s.scale(40) {
+				editW = s.scale(40)
+			}
 		case 3:
 			editW = s.scale(layoutTimeW)
 		}
@@ -463,21 +486,24 @@ func (s *settingsWindow) placeGeneral() {
 	}
 }
 
-func (s *settingsWindow) placeButtons() {
-	_, ch := s.clientSize()
-	btnY := int(ch) - s.scale(layoutMargin+layoutBtnH)
-	clientW, _ := s.clientSize()
-	cancelX := int(clientW) - s.scale(layoutMargin) - s.scale(layoutBtnW)
+func (s *settingsWindow) placeButtons(clientW, clientH int) {
+	btnY := clientH - s.scale(layoutMargin+layoutBtnH)
+	cancelX := clientW - s.scale(layoutMargin) - s.scale(layoutBtnW)
 	applyX := cancelX - s.scale(layoutGap) - s.scale(layoutBtnW)
 	moveWindow(s.applyBtn, applyX, btnY, s.scale(layoutBtnW), s.scale(layoutBtnH))
 	moveWindow(s.cancel, cancelX, btnY, s.scale(layoutBtnW), s.scale(layoutBtnH))
 }
 
 func (s *settingsWindow) showPage(page int) {
+	if page != s.page {
+		s.scrollPos = 0
+		s.wheelAcc = 0
+	}
 	s.page = page
 	showControls(s.general.controls(), page == pageGeneral)
 	s.network.show(page == pageNetwork)
 	showControls(s.about.controls(), page == pageAbout)
+	s.layoutBody()
 }
 
 func showControls(hwnds []uintptr, show bool) {
@@ -537,6 +563,7 @@ func (s *settingsWindow) focusPage() {
 	next, _, _ := procGetNextDlgTabItem.Call(s.hwnd, s.tabs, 0)
 	if next != 0 && next != s.applyBtn && next != s.cancel {
 		procSetFocus.Call(next)
+		s.scrollIntoView(next)
 		return
 	}
 	procSetFocus.Call(s.tabs)
@@ -549,25 +576,39 @@ func (s *settingsWindow) dropDownOpen() bool {
 func (s *settingsWindow) fit(center bool) {
 	cw, ch := s.clientSize()
 	ow, oh := frameSize(cw, ch, s.dpi)
-	if !center {
-		procSetWindowPos.Call(s.hwnd, 0, 0, 0, uintptr(ow), uintptr(oh), swpNoMove|swpNoZOrder)
+	if center {
+		if work, ok := s.workArea(); ok {
+			limit := work.Bottom - work.Top
+			if limit > 0 && oh > limit {
+				oh = limit
+			}
+		}
+		x, y := s.centeredOrigin(ow, oh)
+		procSetWindowPos.Call(s.hwnd, 0, uintptr(x), uintptr(y), uintptr(ow), uintptr(oh), uintptr(swpNoZOrder))
 		return
 	}
-	x, y := s.centeredOrigin(ow, oh)
-	procSetWindowPos.Call(s.hwnd, 0, uintptr(x), uintptr(y), uintptr(ow), uintptr(oh), uintptr(swpNoZOrder))
+	procSetWindowPos.Call(s.hwnd, 0, 0, 0, uintptr(ow), uintptr(oh), swpNoMove|swpNoZOrder)
 }
 
-func (s *settingsWindow) centeredOrigin(width, height int32) (int32, int32) {
+func (s *settingsWindow) workArea() (rect, bool) {
 	mon, _, _ := procMonitorFromWindow.Call(s.hwnd, monitorDefaultNear)
 	var info monitorInfo
 	info.Size = uint32(unsafe.Sizeof(info))
 	ok, _, _ := procGetMonitorInfo.Call(mon, uintptr(unsafe.Pointer(&info)))
 	runtime.KeepAlive(&info)
-	if ok == 0 || info.Work.Right <= info.Work.Left {
+	if ok == 0 || info.Work.Right <= info.Work.Left || info.Work.Bottom <= info.Work.Top {
+		return rect{}, false
+	}
+	return info.Work, true
+}
+
+func (s *settingsWindow) centeredOrigin(width, height int32) (int32, int32) {
+	work, ok := s.workArea()
+	if !ok {
 		return 80, 80
 	}
-	x := info.Work.Left + (info.Work.Right-info.Work.Left-width)/2
-	y := info.Work.Top + (info.Work.Bottom-info.Work.Top-height)/2
+	x := work.Left + (work.Right-work.Left-width)/2
+	y := work.Top + (work.Bottom-work.Top-height)/2
 	return x, y
 }
 
@@ -694,7 +735,7 @@ func (s *settingsWindow) createTips() {
 		info := toolInfo{
 			Size:  uint32(unsafe.Sizeof(toolInfo{})),
 			Flags: ttfIDIsHWND | ttfSubclass,
-			Hwnd:  s.hwnd,
+			Hwnd:  s.body,
 			ID:    item.hwnd,
 			Text:  &s.tipText[i][0],
 		}
@@ -834,6 +875,7 @@ func (s *settingsWindow) reject(page int, focus uintptr, text string) {
 	s.selectPage(page)
 	if focus != 0 {
 		procSetFocus.Call(focus)
+		s.scrollIntoView(focus)
 	}
 	s.alert(text)
 }
@@ -870,16 +912,18 @@ func (s *settingsWindow) onDestroy() {
 }
 
 func (s *settingsWindow) onDPI(wParam, _ uintptr) {
+	old := s.dpi
+	if old == 0 {
+		old = 96
+	}
 	dpi := uint32(wParam & 0xFFFF)
 	if dpi < 96 {
 		dpi = 96
 	}
 	s.dpi = dpi
 	s.applyFont()
-	s.place()
+	s.resizeForDPI(old)
 	s.updateTipWidth()
-	// 只改大小，不读系统给的矩形指针。位置保持不动。
-	s.fit(false)
 }
 
 // handleSettingsKey 处理设置窗口的 Tab、Esc 和回车。
@@ -947,6 +991,7 @@ func (s *settingsWindow) nextTab(previous bool) {
 	next, _, _ := procGetNextDlgTabItem.Call(s.hwnd, focus, back)
 	if next != 0 {
 		procSetFocus.Call(next)
+		s.scrollIntoView(next)
 	}
 }
 
@@ -980,6 +1025,18 @@ func settingsWndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 		return 0
 	case wmDPIChanged:
 		s.onDPI(wParam, lParam)
+		return 0
+	case wmSize:
+		s.place()
+		return 0
+	case wmGetMinMaxInfo:
+		s.onGetMinMaxInfo(lParam)
+		return 0
+	case wmNCHitTest:
+		hit, _, _ := procDefWindowProc.Call(hwnd, message, wParam, lParam)
+		return adjustHitTest(hit)
+	case wmMouseWheel:
+		s.onMouseWheel(wParam)
 		return 0
 	case dmGetDefID:
 		return uintptr(idApply) | uintptr(dcHasDefID)<<16

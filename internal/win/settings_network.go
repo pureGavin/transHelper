@@ -46,15 +46,15 @@ func (s *settingsWindow) createNetwork(instance windows.Handle) error {
 	editStyle := uintptr(wsChild | wsVisible | wsTabStop | wsBorder | esAutohScroll)
 	checkStyle := uintptr(wsChild | wsVisible | wsTabStop | bsAutoCheck)
 	var err error
-	if s.network.enable, err = createControl("BUTTON", "启用代理", checkStyle, 0, 0, 10, 10, s.hwnd, idProxyOn, instance); err != nil {
+	if s.network.enable, err = createControl("BUTTON", "启用代理", checkStyle, 0, 0, 10, 10, s.body, idProxyOn, instance); err != nil {
 		return err
 	}
-	if s.network.typeLabel, err = createControl("STATIC", "类型", labelStyle, 0, 0, 10, 10, s.hwnd, 0, instance); err != nil {
+	if s.network.typeLabel, err = createControl("STATIC", "类型", labelStyle, 0, 0, 10, 10, s.body, 0, instance); err != nil {
 		return err
 	}
 	// 下拉列表的高度在 place 里给。这里先占个位置。
 	comboStyle := uintptr(wsChild | wsVisible | wsTabStop | wsVScroll | cbsDropDownList | cbsHasStrings)
-	if s.network.kind, err = createControl("COMBOBOX", "", comboStyle, 0, 0, 10, 10, s.hwnd, idProxyType, instance); err != nil {
+	if s.network.kind, err = createControl("COMBOBOX", "", comboStyle, 0, 0, 10, 10, s.body, idProxyType, instance); err != nil {
 		return err
 	}
 	for _, item := range []string{"HTTP", "SOCKS5"} {
@@ -62,41 +62,40 @@ func (s *settingsWindow) createNetwork(instance windows.Handle) error {
 		procSendMessage.Call(s.network.kind, cbAddString, 0, uintptr(unsafe.Pointer(&text[0])))
 		runtime.KeepAlive(text)
 	}
-	if s.network.hostLabel, err = createControl("STATIC", "地址", labelStyle, 0, 0, 10, 10, s.hwnd, 0, instance); err != nil {
+	if s.network.hostLabel, err = createControl("STATIC", "地址", labelStyle, 0, 0, 10, 10, s.body, 0, instance); err != nil {
 		return err
 	}
-	if s.network.host, err = createControl("EDIT", "", editStyle, 0, 0, 10, 10, s.hwnd, idProxyHost, instance); err != nil {
+	if s.network.host, err = createControl("EDIT", "", editStyle, 0, 0, 10, 10, s.body, idProxyHost, instance); err != nil {
 		return err
 	}
-	if s.network.portLabel, err = createControl("STATIC", "端口", labelStyle, 0, 0, 10, 10, s.hwnd, 0, instance); err != nil {
+	if s.network.portLabel, err = createControl("STATIC", "端口", labelStyle, 0, 0, 10, 10, s.body, 0, instance); err != nil {
 		return err
 	}
-	if s.network.port, err = createControl("EDIT", "", editStyle|esNumber, 0, 0, 10, 10, s.hwnd, idProxyPort, instance); err != nil {
+	if s.network.port, err = createControl("EDIT", "", editStyle|esNumber, 0, 0, 10, 10, s.body, idProxyPort, instance); err != nil {
 		return err
 	}
-	if s.network.auth, err = createControl("BUTTON", "需要身份验证", checkStyle, 0, 0, 10, 10, s.hwnd, idProxyAuth, instance); err != nil {
+	if s.network.auth, err = createControl("BUTTON", "需要身份验证", checkStyle, 0, 0, 10, 10, s.body, idProxyAuth, instance); err != nil {
 		return err
 	}
-	if s.network.userLabel, err = createControl("STATIC", "用户名", labelStyle, 0, 0, 10, 10, s.hwnd, 0, instance); err != nil {
+	if s.network.userLabel, err = createControl("STATIC", "用户名", labelStyle, 0, 0, 10, 10, s.body, 0, instance); err != nil {
 		return err
 	}
-	if s.network.user, err = createControl("EDIT", "", editStyle, 0, 0, 10, 10, s.hwnd, idProxyUser, instance); err != nil {
+	if s.network.user, err = createControl("EDIT", "", editStyle, 0, 0, 10, 10, s.body, idProxyUser, instance); err != nil {
 		return err
 	}
-	if s.network.passLabel, err = createControl("STATIC", "密码", labelStyle, 0, 0, 10, 10, s.hwnd, 0, instance); err != nil {
+	if s.network.passLabel, err = createControl("STATIC", "密码", labelStyle, 0, 0, 10, 10, s.body, 0, instance); err != nil {
 		return err
 	}
-	if s.network.pass, err = createControl("EDIT", "", editStyle|esPassword, 0, 0, 10, 10, s.hwnd, idProxyPass, instance); err != nil {
+	if s.network.pass, err = createControl("EDIT", "", editStyle|esPassword, 0, 0, 10, 10, s.body, idProxyPass, instance); err != nil {
 		return err
 	}
-	if s.network.forModel, err = createControl("BUTTON", "模型请求也走代理", checkStyle, 0, 0, 10, 10, s.hwnd, idProxyModel, instance); err != nil {
+	if s.network.forModel, err = createControl("BUTTON", "模型请求也走代理", checkStyle, 0, 0, 10, 10, s.body, idProxyModel, instance); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (n *networkPage) place(s *settingsWindow) {
-	top := s.contentTop()
+func (n *networkPage) place(s *settingsWindow, top, width int) {
 	row := func(i int) int {
 		return top + s.scale(i*(layoutRowH+layoutRowGap))
 	}
@@ -104,17 +103,25 @@ func (n *networkPage) place(s *settingsWindow) {
 	valueX := s.scale(layoutMargin + layoutLabelW + layoutGap)
 	labelW := s.scale(layoutLabelW)
 	rowH := s.scale(layoutRowH)
-	fullW := s.scale(layoutLabelW + layoutGap + layoutEditW)
+	fullW := width - 2*labelX
+	if fullW < s.scale(40) {
+		fullW = s.scale(40)
+	}
 	moveWindow(n.enable, labelX, row(0), fullW, rowH)
 	moveWindow(n.typeLabel, labelX, row(1), labelW, rowH)
+	valueW := s.valueWidth(width)
+	comboW := s.scale(140)
+	if comboW > valueW {
+		comboW = valueW
+	}
 	// 组合框的高度包含收起后的下拉列表。列表弹出时盖住下面的行，收起后只有一行高。
-	moveWindow(n.kind, valueX, row(1), s.scale(140), s.scale(140))
+	moveWindow(n.kind, valueX, row(1), comboW, s.scale(140))
 	gap := s.scale(layoutGap)
 	portW := s.scale(layoutTimeW)
 	portLabelW := s.scale(40)
-	hostW := s.scale(layoutEditW) - portLabelW - portW - gap
-	if hostW < s.scale(80) {
-		hostW = s.scale(80)
+	hostW := valueW - portLabelW - portW - gap
+	if hostW < 1 {
+		hostW = 1
 	}
 	moveWindow(n.hostLabel, labelX, row(2), labelW, rowH)
 	moveWindow(n.host, valueX, row(2), hostW, rowH)
@@ -123,9 +130,9 @@ func (n *networkPage) place(s *settingsWindow) {
 	moveWindow(n.port, portLabelX+portLabelW, row(2), portW, rowH)
 	moveWindow(n.auth, labelX, row(3), fullW, rowH)
 	moveWindow(n.userLabel, labelX, row(4), labelW, rowH)
-	moveWindow(n.user, valueX, row(4), s.scale(layoutEditW), rowH)
+	moveWindow(n.user, valueX, row(4), valueW, rowH)
 	moveWindow(n.passLabel, labelX, row(5), labelW, rowH)
-	moveWindow(n.pass, valueX, row(5), s.scale(layoutEditW), rowH)
+	moveWindow(n.pass, valueX, row(5), valueW, rowH)
 	moveWindow(n.forModel, labelX, row(6), fullW, rowH)
 }
 

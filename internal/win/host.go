@@ -249,7 +249,7 @@ func (h *host) loop() {
 			h.logger.Printf("GetMessage 失败: %v", err)
 			return
 		}
-		if h.handleSettingsKey(&m) {
+		if h.handleSettingsKey(&m) || h.handleSettingsWheel(&m) {
 			continue
 		}
 		// 设置窗口不是系统对话框。Tab、Esc 和回车在 handleSettingsKey 里处理。
