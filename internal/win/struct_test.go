@@ -26,6 +26,8 @@ func TestWin32StructSizes(t *testing.T) {
 		{"NMHDR", unsafe.Sizeof(nmHdr{}), 24},
 		{"MINMAXINFO", unsafe.Sizeof(minMaxInfo{}), 40},
 		{"SCROLLINFO", unsafe.Sizeof(scrollInfo{}), 28},
+		{"PAINTSTRUCT", unsafe.Sizeof(paintStruct{}), 72},
+		{"NMCUSTOMDRAW", unsafe.Sizeof(nmCustomDraw{}), 80},
 	}
 	for _, check := range checks {
 		if check.got != check.want {

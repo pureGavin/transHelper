@@ -230,11 +230,11 @@ func (n *networkPage) syncEnabled() {
 	enableWindow(n.pass, on && isChecked(n.auth))
 }
 
-func (n *networkPage) dropped() bool {
-	if n.kind == 0 {
+func comboOpen(hwnd uintptr) bool {
+	if hwnd == 0 {
 		return false
 	}
-	state, _, _ := procSendMessage.Call(n.kind, cbGetDroppedState, 0, 0)
+	state, _, _ := procSendMessage.Call(hwnd, cbGetDroppedState, 0, 0)
 	return state != 0
 }
 

@@ -62,6 +62,7 @@ const (
 	idKey        = 103
 	idShowKey    = 104
 	idTimeout    = 105
+	idTheme      = 106
 	idTabs       = 110
 	idLink       = 111
 	idProxyOn    = 201
@@ -137,37 +138,44 @@ var (
 // 顶部是三个标签，底部的应用和取消对所有页一起生效。
 // 中间的 body 可以竖向滚动，标签和按钮不跟着动。
 type settingsWindow struct {
-	hwnd      uintptr
-	body      uintptr
-	tip       uintptr
-	font      uintptr
-	dpi       uint32
-	base      config.Config
-	page      int
-	scrollPos int
-	wheelAcc  int
-	laying    bool
-	tabs      uintptr
-	general   generalPage
-	network   networkPage
-	about     aboutPage
-	applyBtn  uintptr
-	cancel    uintptr
-	tipText   [][]uint16
+	hwnd        uintptr
+	body        uintptr
+	tip         uintptr
+	font        uintptr
+	dpi         uint32
+	base        config.Config
+	page        int
+	scrollPos   int
+	wheelAcc    int
+	laying      bool
+	themeChoice string
+	dark        bool
+	bgBrush     uintptr
+	editBrush   uintptr
+	lineBrush   uintptr
+	buttonTheme uintptr
+	tabs        uintptr
+	general     generalPage
+	network     networkPage
+	about       aboutPage
+	applyBtn    uintptr
+	cancel      uintptr
+	tipText     [][]uint16
 }
 
-// generalPage 是「通用」页，改模型地址、名称、密钥和超时。
+// generalPage 是「通用」页，改模型地址、名称、密钥、超时和界面主题。
 type generalPage struct {
-	labels  [4]uintptr
+	labels  [5]uintptr
 	url     uintptr
 	model   uintptr
 	key     uintptr
 	timeout uintptr
+	theme   uintptr
 	showKey uintptr
 }
 
 func (g generalPage) controls() []uintptr {
-	out := []uintptr{g.url, g.model, g.key, g.timeout, g.showKey}
+	out := []uintptr{g.url, g.model, g.key, g.timeout, g.theme, g.showKey}
 	return append(out, g.labels[:]...)
 }
 
@@ -240,6 +248,9 @@ func (s *settingsWindow) create(h *host) error {
 	s.place()
 	s.createTips()
 	s.fill(h)
+	s.hookSubclass(s.tabs, subclassTab)
+	// 显示之前套上主题，避免先闪一下浅色标题栏。
+	s.applyTheme(s.base.Theme)
 	procShowWindow.Call(s.hwnd, swShowNormal)
 	procSetForegroundWindow.Call(s.hwnd)
 	procSetFocus.Call(s.general.url)
@@ -316,7 +327,7 @@ func (s *settingsWindow) createChildren(h *host) error {
 func (s *settingsWindow) createGeneral(instance windows.Handle) error {
 	labelStyle := uintptr(wsChild | wsVisible | ssCenterImage)
 	editStyle := uintptr(wsChild | wsVisible | wsTabStop | wsBorder | esAutohScroll)
-	labels := []string{"模型地址", "模型名称", "API Key", "超时（秒）"}
+	labels := []string{"模型地址", "模型名称", "API Key", "超时（秒）", "界面主题"}
 	for i, text := range labels {
 		hwnd, err := createControl("STATIC", text, labelStyle, 0, 0, 10, 10, s.body, 0, instance)
 		if err != nil {
@@ -339,6 +350,15 @@ func (s *settingsWindow) createGeneral(instance windows.Handle) error {
 	}
 	if s.general.timeout, err = createControl("EDIT", "", editStyle|esNumber, 0, 0, 10, 10, s.body, idTimeout, instance); err != nil {
 		return err
+	}
+	comboStyle := uintptr(wsChild | wsVisible | wsTabStop | wsVScroll | cbsDropDownList | cbsHasStrings)
+	if s.general.theme, err = createControl("COMBOBOX", "", comboStyle, 0, 0, 10, 10, s.body, idTheme, instance); err != nil {
+		return err
+	}
+	for _, item := range []string{"跟随系统", "浅色", "深色"} {
+		text := utf16String(item)
+		procSendMessage.Call(s.general.theme, cbAddString, 0, uintptr(unsafe.Pointer(&text[0])))
+		runtime.KeepAlive(text)
 	}
 	return nil
 }
@@ -391,6 +411,7 @@ func (s *settingsWindow) fill(h *host) {
 	procSendMessage.Call(s.general.model, emSetLimitText, 256, 0)
 	procSendMessage.Call(s.general.key, emSetLimitText, 512, 0)
 	procSendMessage.Call(s.general.timeout, emSetLimitText, 3, 0)
+	setThemeSelection(s.general.theme, s.base.Theme)
 	version := ""
 	digest := "无法读取"
 	if h != nil {
@@ -410,11 +431,10 @@ func (s *settingsWindow) scale(v int) int {
 }
 
 func generalBody() int {
-	return 4 * (layoutRowH + layoutRowGap)
+	return 5 * (layoutRowH + layoutRowGap)
 }
 
-func (s *settingsWindow) clientSize() (int32, int32) {
-	w := s.scale(layoutMargin + layoutLabelW + layoutGap + layoutEditW + layoutMargin)
+func maxPageBody() int {
 	body := generalBody()
 	if about := aboutBody(); about > body {
 		body = about
@@ -422,8 +442,13 @@ func (s *settingsWindow) clientSize() (int32, int32) {
 	if net := networkBody(); net > body {
 		body = net
 	}
+	return body
+}
+
+func (s *settingsWindow) clientSize() (int32, int32) {
+	w := s.scale(layoutMargin + layoutLabelW + layoutGap + layoutEditW + layoutMargin)
 	// 分段取整，和 placeBody 用的是同一套减法，完整高度下内容区刚好放下，不会多出滚动条。
-	h := s.contentTop() + s.scale(body) + s.scale(8+layoutBtnH+layoutMargin)
+	h := s.contentTop() + s.scale(maxPageBody()) + s.scale(8+layoutBtnH+layoutMargin)
 	return int32(w), int32(h)
 }
 
@@ -463,12 +488,13 @@ func (s *settingsWindow) valueWidth(width int) int {
 }
 
 func (s *settingsWindow) placeGeneral(top, width int) {
-	edits := []uintptr{s.general.url, s.general.model, s.general.key, s.general.timeout}
+	edits := []uintptr{s.general.url, s.general.model, s.general.key, s.general.timeout, s.general.theme}
 	valueW := s.valueWidth(width)
-	for i := 0; i < 4; i++ {
+	for i := 0; i < len(edits); i++ {
 		y := top + s.scale(i*(layoutRowH+layoutRowGap))
 		moveWindow(s.general.labels[i], s.scale(layoutMargin), y, s.scale(layoutLabelW), s.scale(layoutRowH))
 		editW := valueW
+		editH := s.scale(layoutRowH)
 		switch i {
 		case 2:
 			editW = valueW - s.scale(layoutCheckW+layoutGap)
@@ -477,9 +503,20 @@ func (s *settingsWindow) placeGeneral(top, width int) {
 			}
 		case 3:
 			editW = s.scale(layoutTimeW)
+		case 4:
+			editW = s.scale(160)
+			if editW > valueW {
+				editW = valueW
+			}
+			// 下拉列表算在控件高度里。留出三行选项，避免被内容区裁掉。
+			contentY := s.scale(i * (layoutRowH + layoutRowGap))
+			editH = s.scale(maxPageBody()) - contentY - s.scale(2)
+			if editH < s.scale(layoutRowH) {
+				editH = s.scale(layoutRowH * 4)
+			}
 		}
 		x := s.scale(layoutMargin + layoutLabelW + layoutGap)
-		moveWindow(edits[i], x, y, editW, s.scale(layoutRowH))
+		moveWindow(edits[i], x, y, editW, editH)
 		if i == 2 {
 			moveWindow(s.general.showKey, x+editW+s.scale(layoutGap), y, s.scale(layoutCheckW), s.scale(layoutRowH))
 		}
@@ -570,7 +607,7 @@ func (s *settingsWindow) focusPage() {
 }
 
 func (s *settingsWindow) dropDownOpen() bool {
-	return s.network.dropped()
+	return comboOpen(s.network.kind) || comboOpen(s.general.theme)
 }
 
 func (s *settingsWindow) fit(center bool) {
@@ -722,6 +759,7 @@ func (s *settingsWindow) createTips() {
 		{s.general.model, "要和模型服务上的名称一致"},
 		{s.general.key, "不需要时留空，只保存在本机配置文件"},
 		{s.general.timeout, "单次翻译最多等待 1 到 120 秒，超时不改动输入框"},
+		{s.general.theme, "跟随系统、浅色或深色。点应用后记住"},
 		{s.about.digest, "和 Release 说明里的值核对"},
 	}
 	items = append(items, s.network.tips()...)
@@ -763,7 +801,12 @@ func initTooltips() {
 	initCommonControls()
 }
 
-func (s *settingsWindow) onNotify(wParam, lParam uintptr) {
+func (s *settingsWindow) onNotify(wParam, lParam uintptr) uintptr {
+	if s.dark {
+		if result, handled := s.paintCheckboxNotify(lParam); handled {
+			return result
+		}
+	}
 	switch wParam {
 	case idTabs:
 		// 不读 lParam。标签页当前选中哪一页，问控件自己就行。
@@ -774,6 +817,7 @@ func (s *settingsWindow) onNotify(wParam, lParam uintptr) {
 			s.about.openLink()
 		}
 	}
+	return 0
 }
 
 // notifyCode 从 WM_NOTIFY 的 lParam 里取出 NMHDR.code。
@@ -801,6 +845,7 @@ func (s *settingsWindow) apply() {
 	cfg.Model = strings.TrimSpace(windowText(s.general.model))
 	cfg.APIKey = strings.TrimSpace(windowText(s.general.key))
 	cfg.Timeout = time.Duration(seconds) * time.Second
+	cfg.Theme = selectedTheme(s.general.theme)
 	// 窗口开着时，菜单可能已经改过自动检查。以内存里的为准，避免应用时把它改回去。
 	cfg.AutoCheckUpdate = h.cfg.AutoCheckUpdate
 	if cfg.BaseURL == "" {
@@ -904,6 +949,8 @@ func (s *settingsWindow) onDestroy() {
 		procDeleteObject.Call(s.font)
 		s.font = 0
 	}
+	s.closeButtonTheme()
+	s.freeBrushes()
 	// 先摘掉引用，再清 hwnd。销毁过程中如果还有消息进来，不会把这个窗口认成新窗口。
 	if globalHost != nil && globalHost.settings == s {
 		globalHost.settings = nil
@@ -921,6 +968,7 @@ func (s *settingsWindow) onDPI(wParam, _ uintptr) {
 		dpi = 96
 	}
 	s.dpi = dpi
+	s.closeButtonTheme()
 	s.applyFont()
 	s.resizeForDPI(old)
 	s.updateTipWidth()
@@ -1010,13 +1058,30 @@ func settingsWndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 			s.close()
 		case idShowKey:
 			s.syncPassword()
+		case idTheme:
+			if wParam>>16 == cbnSelChange {
+				s.previewTheme()
+			}
 		default:
 			s.network.onCommand(wParam & 0xFFFF)
 		}
 		return 0
 	case wmNotify:
-		s.onNotify(wParam, lParam)
+		return s.onNotify(wParam, lParam)
+	case wmEraseBkgnd:
+		s.eraseBackground(hwnd, wParam)
+		return 1
+	case wmSettingChange:
+		s.onSettingChange(lParam)
 		return 0
+	case wmCtlColorStatic, wmCtlColorEdit, wmCtlColorBtn, wmCtlColorListBox:
+		if s.dark {
+			if brush := s.controlColor(message, wParam, lParam); brush != 0 {
+				return brush
+			}
+		}
+		r, _, _ := procDefWindowProc.Call(hwnd, message, wParam, lParam)
+		return r
 	case wmClose:
 		s.close()
 		return 0

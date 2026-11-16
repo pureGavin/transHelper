@@ -56,6 +56,7 @@ func (s *settingsWindow) createAbout(instance windows.Handle) error {
 	if s.about.link, err = createControl("SysLink", linkText, linkStyle, 0, 0, 10, 10, s.body, idLink, instance); err != nil {
 		return err
 	}
+	s.hookSubclass(s.about.link, subclassLink)
 	return nil
 }
 

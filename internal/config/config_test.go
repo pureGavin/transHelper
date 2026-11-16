@@ -53,6 +53,9 @@ model = " demo "
 	if cfg.AutoCheckUpdate {
 		t.Fatal("未写 update.auto_check 时应该关闭自动检查")
 	}
+	if cfg.Theme != ThemeSystem {
+		t.Fatalf("Theme = %q，未写 ui.theme 时应该跟随系统", cfg.Theme)
+	}
 	if cfg.Proxy.Enabled || cfg.Proxy.Type != "http" || cfg.Proxy.Host != "" || cfg.Proxy.Port != 0 || cfg.Proxy.Auth || cfg.Proxy.ForModel {
 		t.Fatalf("未写 proxy 时 = %+v", cfg.Proxy)
 	}
@@ -331,6 +334,9 @@ func TestDefaultTemplate(t *testing.T) {
 	if cfg.AutoCheckUpdate {
 		t.Fatal("默认不应该自动检查更新")
 	}
+	if cfg.Theme != ThemeSystem || !strings.Contains(string(data), `theme = "system"`) {
+		t.Fatalf("默认主题 = %q\n%s", cfg.Theme, data)
+	}
 	if cfg.Proxy.Enabled || cfg.Proxy.Type != "http" || cfg.Proxy.Auth || cfg.Proxy.ForModel {
 		t.Fatalf("默认代理 = %+v", cfg.Proxy)
 	}
@@ -348,6 +354,7 @@ func TestRenderRoundTrip(t *testing.T) {
 	cfg.Timeout = 15 * time.Second
 	cfg.Temperature = 0
 	cfg.AutoCheckUpdate = true
+	cfg.Theme = ThemeDark
 	cfg.Processes = []string{"ms-teams.exe", "Teams.exe"}
 	cfg.Proxy = Proxy{
 		Enabled:  true,
@@ -385,6 +392,9 @@ func TestRenderRoundTrip(t *testing.T) {
 	if !got.AutoCheckUpdate {
 		t.Fatal("auto_check 应该为 true")
 	}
+	if got.Theme != ThemeDark {
+		t.Fatalf("Theme = %q", got.Theme)
+	}
 	if got.TranslateOnly.String() != "Ctrl+Alt+T" || got.TranslateAndSend.String() != "Alt+Enter" {
 		t.Fatalf("热键 = %s / %s", got.TranslateAndSend, got.TranslateOnly)
 	}
@@ -393,6 +403,36 @@ func TestRenderRoundTrip(t *testing.T) {
 	}
 	if got.Proxy != cfg.Proxy {
 		t.Fatalf("代理没有原样回来: %+v", got.Proxy)
+	}
+}
+
+func TestParseTheme(t *testing.T) {
+	for _, theme := range []string{"system", "light", "dark", "DARK", " Light "} {
+		cfg, err := Parse([]byte(`
+[model]
+base_url = "http://127.0.0.1:9/v1"
+model = "demo"
+
+[ui]
+theme = "` + theme + `"
+`))
+		if err != nil {
+			t.Fatal(theme, err)
+		}
+		if cfg.Theme != strings.ToLower(strings.TrimSpace(theme)) {
+			t.Fatalf("Theme = %q，输入 %q", cfg.Theme, theme)
+		}
+	}
+	_, err := Parse([]byte(`
+[model]
+base_url = "http://127.0.0.1:9/v1"
+model = "demo"
+
+[ui]
+theme = "blue"
+`))
+	if err == nil || !strings.Contains(err.Error(), "ui.theme") {
+		t.Fatalf("非法主题: %v", err)
 	}
 }
 

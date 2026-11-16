@@ -37,6 +37,13 @@ const (
 	minTimeoutSeconds     = 1
 	maxTimeoutSeconds     = 120
 	defaultTemperature    = 0.2
+
+	// ThemeSystem 跟随 Windows 的应用主题。
+	ThemeSystem = "system"
+	// ThemeLight 始终使用浅色。
+	ThemeLight = "light"
+	// ThemeDark 始终使用深色。
+	ThemeDark = "dark"
 )
 
 // DefaultProcesses 是未写进程白名单时使用的名单。
@@ -65,6 +72,8 @@ type Config struct {
 	Processes []string
 	// AutoCheckUpdate 为 true 时定期检查 GitHub Release。默认 false。
 	AutoCheckUpdate bool
+	// Theme 是设置窗口的界面主题：system、light 或 dark。没写时是 system。
+	Theme string
 	// Proxy 是检查更新和可选的翻译请求使用的代理。未启用时沿用环境变量。
 	Proxy Proxy
 }
@@ -162,7 +171,12 @@ type fileConfig struct {
 	Hotkeys hotkeySection `toml:"hotkeys"`
 	Target  targetSection `toml:"target"`
 	Update  updateSection `toml:"update"`
+	UI      uiSection     `toml:"ui"`
 	Proxy   proxySection  `toml:"proxy"`
+}
+
+type uiSection struct {
+	Theme string `toml:"theme"`
 }
 
 type proxySection struct {
@@ -291,12 +305,30 @@ func Parse(data []byte) (Config, error) {
 		}
 	}
 	cfg.AutoCheckUpdate = raw.Update.AutoCheck
+	theme, err := parseTheme(raw.UI.Theme, md)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Theme = theme
 	proxy, err := parseProxy(raw.Proxy, md)
 	if err != nil {
 		return Config{}, err
 	}
 	cfg.Proxy = proxy
 	return cfg, nil
+}
+
+func parseTheme(raw string, md toml.MetaData) (string, error) {
+	theme := strings.ToLower(strings.TrimSpace(raw))
+	if theme == "" && !md.IsDefined("ui", "theme") {
+		return ThemeSystem, nil
+	}
+	switch theme {
+	case ThemeSystem, ThemeLight, ThemeDark:
+		return theme, nil
+	default:
+		return "", fmt.Errorf("ui.theme 只能是 system、light 或 dark")
+	}
 }
 
 func parseProxy(raw proxySection, md toml.MetaData) (Proxy, error) {
@@ -368,6 +400,7 @@ func Default() Config {
 		TranslateAndSend: send,
 		TranslateOnly:    only,
 		Processes:        append([]string(nil), DefaultProcesses...),
+		Theme:            ThemeSystem,
 		Proxy:            Proxy{Type: "http"},
 	}
 }

@@ -185,20 +185,23 @@ func bodyWndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 	return r
 }
 
-// settingsOwning 找到内容区或它的父窗口对应的设置窗口。
-// 创建内容区时 body 字段还没写上，这时靠父窗口认。
+// settingsOwning 沿着父窗口找到设置窗口。
+// 创建内容区时 body 字段还没写上，这时靠再上一层的设置窗口认。
 func settingsOwning(hwnd uintptr) *settingsWindow {
 	h := globalHost
 	if h == nil || h.settings == nil || hwnd == 0 {
 		return nil
 	}
 	s := h.settings
-	if s.body == hwnd || s.hwnd == hwnd {
-		return s
-	}
-	parent, _, _ := procGetParent.Call(hwnd)
-	if parent != 0 && s.hwnd == parent {
-		return s
+	for hwnd != 0 {
+		if hwnd == s.hwnd || (s.body != 0 && hwnd == s.body) {
+			return s
+		}
+		next, _, _ := procGetParent.Call(hwnd)
+		if next == 0 || next == hwnd {
+			break
+		}
+		hwnd = next
 	}
 	return nil
 }
@@ -206,9 +209,17 @@ func settingsOwning(hwnd uintptr) *settingsWindow {
 func (s *settingsWindow) eraseBackground(hwnd, dc uintptr) {
 	var area rect
 	procGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&area)))
-	brush, _, _ := procGetSysColorBrush.Call(colorBtnFace)
+	brush := s.backgroundBrush()
 	procFillRect.Call(dc, uintptr(unsafe.Pointer(&area)), brush)
 	runtime.KeepAlive(&area)
+}
+
+func (s *settingsWindow) backgroundBrush() uintptr {
+	if s != nil && s.dark && s.bgBrush != 0 {
+		return s.bgBrush
+	}
+	brush, _, _ := procGetSysColorBrush.Call(colorBtnFace)
+	return brush
 }
 
 func (s *settingsWindow) placeBody(clientW, clientH int) {
