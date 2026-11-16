@@ -166,7 +166,11 @@ func newLogger() *log.Logger {
 var instanceMutex windows.Handle
 
 func acquireInstance() (func(), bool, error) {
-	name, err := windows.UTF16FromString(`Local\transHelper`)
+	raw, err := instanceName()
+	if err != nil {
+		return nil, false, err
+	}
+	name, err := windows.UTF16FromString(raw)
 	if err != nil {
 		return nil, false, err
 	}

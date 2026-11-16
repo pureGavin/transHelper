@@ -324,6 +324,13 @@ func wndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 	case wmHotkey:
 		h.onHotkey(wParam)
 		return 0
+	case wmCommand:
+		// 测试驱动投递菜单命令，不必真的点托盘图标。只认四个菜单项，别的命令留给 DefWindowProc。
+		switch wParam & 0xFFFF {
+		case menuSettings, menuCheckUpdate, menuAutoCheck, menuExit:
+			h.runMenu(wParam & 0xFFFF)
+			return 0
+		}
 	case wmTray:
 		switch lParam {
 		case wmRButtonUp, wmContextMenu:
@@ -487,6 +494,8 @@ func (h *host) flushNotify() {
 	h.pending = nil
 	h.notifyMu.Unlock()
 	for _, item := range items {
+		// 测试要断言通知文字。这里只记提示本身，不记用户要翻译的内容。
+		h.logger.Printf("通知：%s", item.text)
 		h.clickAction = item.action
 		h.balloon(item.text)
 		if !item.info {
@@ -576,6 +585,11 @@ func (h *host) showMenu() {
 	runtime.KeepAlive(&pt)
 	cmd, _, _ := procTrackPopupMenu.Call(menu, tpmReturnCmd, uintptr(pt.X), uintptr(pt.Y), 0, h.hwnd, 0)
 	procPostMessage.Call(h.hwnd, wmNull, 0, 0)
+	h.runMenu(cmd)
+}
+
+// runMenu 执行托盘菜单项。弹出菜单和外部投递的 WM_COMMAND 都走这里。
+func (h *host) runMenu(cmd uintptr) {
 	switch cmd {
 	case menuExit:
 		h.cancel()

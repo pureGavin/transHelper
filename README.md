@@ -22,7 +22,7 @@
 4. 在 Teams 输入框里按 `Alt+T` 或 `Alt+Enter`。
 5. 退出：在托盘图标上右键，选择“退出”。
 
-正式版不在 exe 旁边写日志。需要排查时，在 cmd 里运行 `transhelper.exe 2> transhelper.log`，日志会进这个文件，只记错误、耗时和字数，不记消息内容。同一时间只能运行一个实例。
+正式版不在 exe 旁边写日志。需要排查时，在 cmd 里运行 `transhelper.exe 2> transhelper.log`，日志会进这个文件，只记错误、耗时、字数和通知文字，不记要翻译的消息内容。同一时间只能运行一个实例。
 
 未签名程序第一次运行时，Windows 和杀毒软件可能拦截，见“SmartScreen 与杀毒软件”。
 
@@ -128,6 +128,26 @@ zip 里只有 exe 和 README。即使把带密钥的 `transhelper.toml` 放进 `
 
 `dist\transhelper\transhelper.exe` 正在运行时脚本会中止，先从托盘退出再构建。
 
+### 驱动设置窗口
+
+托盘菜单和设置窗口可以用窗口消息操作，按控件名字读写，不靠屏幕坐标。这只用于本机测试，正式包不包含这套驱动。普通的 `go test` 也不会跑，因为用例需要一个桌面会话。
+
+```powershell
+. .\scripts\env.ps1
+go test -tags uidrive ./internal/win -run E2E -v
+```
+
+想一步步看窗口时，用 `scripts\uidrive.ps1`。它会启动一个单独的测试实例，不占用正在使用的那一个：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uidrive.ps1 start
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uidrive.ps1 menu settings
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uidrive.ps1 state
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uidrive.ps1 stop
+```
+
+`state` 打印每个控件的文字、勾选和是否可用。密码框只给长度。看颜色或自绘效果时用 `shot settings.png`，这个命令只截设置窗口。
+
 正式版 exe 必须带这些保护，缺一项构建就会失败：
 
 - ASLR（`DYNAMIC_BASE`）和 64 位高熵 ASLR（`HIGH_ENTROPY_VA`），由 `-buildmode=pie` 打开。
@@ -163,13 +183,14 @@ exe 没有代码签名。第一次运行时，Windows 可能提示“Windows 已
 
 ## 目录
 
-- `scripts/`：安装 Go、设置当前会话环境、`build.ps1` 构建发布包、`next-version.ps1` 计算下一个版本号、`github-issues.ps1` 提交和拉取 Issues，以及 `release-notes.ps1` 生成 Release 说明。
+- `scripts/`：安装 Go、设置当前会话环境、`build.ps1` 构建发布包、`uidrive.ps1` 驱动设置窗口、`next-version.ps1` 计算下一个版本号、`github-issues.ps1` 提交和拉取 Issues，以及 `release-notes.ps1` 生成 Release 说明。
 - `.github/workflows/`：推送到 main 后构建并发布 Release。
-- `.cursor/skills/`：提交和拉取 GitHub Issues 的说明。
+- `.cursor/skills/`：提交和拉取 GitHub Issues，以及用窗口消息驱动设置窗口的说明。
 - `cmd/transhelper/`：正式程序。加载配置、保证单实例、跑消息循环。
 - `cmd/pecheck/`：检查发布 exe 的 ASLR、DEP 和符号表。
 - `cmd/transhelper/winres/`：图标、清单和版本信息资源。
 - `cmd/trytranslate/`：用真实模型翻译样例句。
+- `cmd/uidrive/`：测试用的设置窗口驱动。要用 `-tags uidrive` 编译，正式包不包含。
 - `internal/app/`：一次热键的流程编排，不调用 Win32。
 - `internal/win/`：窗口、热键、剪贴板、托盘等全部 Win32 调用。
 - `internal/hotkey/`：把热键字符串解析成修饰键和虚拟键码。

@@ -31,13 +31,14 @@
 
 ## 目录
 
-- `scripts/`：安装 Go、设置当前会话环境、构建发布包、计算下一个版本号、提交和拉取 GitHub Issues，以及生成 Release 说明。
+- `scripts/`：安装 Go、设置当前会话环境、构建发布包、用 `uidrive.ps1` 驱动设置窗口、计算下一个版本号、提交和拉取 GitHub Issues，以及生成 Release 说明。
 - `.github/workflows/`：推送到 main 后构建并发布 Release。
-- `.cursor/skills/`：提交和拉取 GitHub Issues 的说明。
+- `.cursor/skills/`：提交和拉取 GitHub Issues，以及用窗口消息驱动设置窗口的说明。
 - `cmd/transhelper/`：正式程序入口。
 - `cmd/pecheck/`：检查发布 exe 的 ASLR、DEP 和符号表。
 - `cmd/transhelper/winres/`：图标、清单和版本信息资源。
 - `cmd/trytranslate/`：用真实模型翻译样例句。
+- `cmd/uidrive/`：测试驱动。按控件 ID 给托盘和设置窗口发消息，不点屏幕。`-tags uidrive` 只用于这个驱动和它启动的测试实例，`scripts\build.ps1` 和正式包都不带。
 - `internal/config/`：读取和写回 TOML 配置。默认内容在 `template.toml`。
 - `internal/update/`：查询 GitHub Release、校验安装包并替换 exe。
 - `internal/hotkey/`：热键字符串解析。
