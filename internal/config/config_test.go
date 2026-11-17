@@ -38,8 +38,8 @@ model = " demo "
 	if cfg.SystemPrompt != "" {
 		t.Fatalf("SystemPrompt = %q", cfg.SystemPrompt)
 	}
-	if cfg.TranslateAndSend.String() != "Alt+Enter" || cfg.TranslateOnly.String() != "Alt+T" {
-		t.Fatalf("热键 = %s / %s", cfg.TranslateAndSend, cfg.TranslateOnly)
+	if cfg.TranslateAndSend.String() != "Alt+Enter" || cfg.TranslateOnly.String() != "Alt+T" || cfg.TranslateSelection.String() != "Ctrl+Alt+T" {
+		t.Fatalf("热键 = %s / %s / %s", cfg.TranslateAndSend, cfg.TranslateOnly, cfg.TranslateSelection)
 	}
 	if len(cfg.Processes) != 2 || cfg.Processes[0] != "ms-teams.exe" || cfg.Processes[1] != "Teams.exe" {
 		t.Fatalf("Processes = %#v", cfg.Processes)
@@ -175,6 +175,18 @@ model = "demo"
 [hotkeys]
 translate_and_send = "Alt+Enter"
 translate_only = "Alt+Return"
+`,
+			want: "不能相同",
+		},
+		{
+			name: "框选热键和只翻译相同",
+			toml: `
+[model]
+base_url = "http://127.0.0.1:9/v1"
+model = "demo"
+
+[hotkeys]
+translate_only = "Ctrl+Alt+T"
 `,
 			want: "不能相同",
 		},
@@ -325,8 +337,8 @@ func TestDefaultTemplate(t *testing.T) {
 	if cfg.Timeout != 20*time.Second || cfg.Temperature != 0.2 {
 		t.Fatalf("Timeout=%s Temperature=%v", cfg.Timeout, cfg.Temperature)
 	}
-	if cfg.TranslateAndSend.String() != "Alt+Enter" || cfg.TranslateOnly.String() != "Alt+T" {
-		t.Fatalf("热键 = %s / %s", cfg.TranslateAndSend, cfg.TranslateOnly)
+	if cfg.TranslateAndSend.String() != "Alt+Enter" || cfg.TranslateOnly.String() != "Alt+T" || cfg.TranslateSelection.String() != "Ctrl+Alt+T" {
+		t.Fatalf("热键 = %s / %s / %s", cfg.TranslateAndSend, cfg.TranslateOnly, cfg.TranslateSelection)
 	}
 	if !cfg.AllowsProcess("ms-teams.exe") || !cfg.AllowsProcess("Teams.exe") {
 		t.Fatalf("Processes = %#v", cfg.Processes)
@@ -370,7 +382,12 @@ func TestRenderRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	selection, err := hotkey.Parse("Ctrl+Alt+S")
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg.TranslateOnly = only
+	cfg.TranslateSelection = selection
 
 	data, err := Render(cfg)
 	if err != nil {
@@ -395,8 +412,8 @@ func TestRenderRoundTrip(t *testing.T) {
 	if got.Theme != ThemeDark {
 		t.Fatalf("Theme = %q", got.Theme)
 	}
-	if got.TranslateOnly.String() != "Ctrl+Alt+T" || got.TranslateAndSend.String() != "Alt+Enter" {
-		t.Fatalf("热键 = %s / %s", got.TranslateAndSend, got.TranslateOnly)
+	if got.TranslateOnly.String() != "Ctrl+Alt+T" || got.TranslateAndSend.String() != "Alt+Enter" || got.TranslateSelection.String() != "Ctrl+Alt+S" {
+		t.Fatalf("热键 = %s / %s / %s", got.TranslateAndSend, got.TranslateOnly, got.TranslateSelection)
 	}
 	if len(got.Processes) != 2 || got.Processes[0] != "ms-teams.exe" || got.Processes[1] != "Teams.exe" {
 		t.Fatalf("Processes = %#v", got.Processes)

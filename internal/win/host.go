@@ -388,9 +388,13 @@ func (h *host) onHotkey(id uintptr) {
 	h.desktop.Expect = currentForeground()
 	action := app.ActionTranslateOnly
 	which := "只翻译"
-	if id == hotkeySend {
+	switch id {
+	case hotkeySend:
 		action = app.ActionTranslateAndSend
 		which = "翻译并发送"
+	case hotkeySelection:
+		action = app.ActionTranslateSelection
+		which = "框选翻译"
 	}
 	h.logger.Printf("热键触发：%s", which)
 	// 启动前拷走 runner。应用设置会整体换上新的 runner，不改这个正在用的对象。
@@ -441,6 +445,11 @@ func (h *host) registerHotkeys() error {
 		unregisterOne(h.hwnd, hotkeySend)
 		return fmt.Errorf("只翻译（%s）: %w", h.cfg.TranslateOnly, err)
 	}
+	if err := registerOne(h.hwnd, hotkeySelection, h.cfg.TranslateSelection); err != nil {
+		unregisterOne(h.hwnd, hotkeySend)
+		unregisterOne(h.hwnd, hotkeyOnly)
+		return fmt.Errorf("框选翻译（%s）: %w", h.cfg.TranslateSelection, err)
+	}
 	return nil
 }
 
@@ -458,6 +467,7 @@ func registerOne(hwnd uintptr, id uintptr, combo hotkey.Combo) error {
 func (h *host) unregisterHotkeys() {
 	unregisterOne(h.hwnd, hotkeySend)
 	unregisterOne(h.hwnd, hotkeyOnly)
+	unregisterOne(h.hwnd, hotkeySelection)
 }
 
 func unregisterOne(hwnd, id uintptr) {

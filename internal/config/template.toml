@@ -18,8 +18,10 @@ system_prompt = {{ toml .SystemPrompt }}
 # 至少带 Ctrl、Alt、Win 中的一个，避免影响正常打字。
 # translate_and_send：翻译后替换输入框内容并回车发送。
 # translate_only：只替换输入框内容，不发送。
+# translate_selection：只翻译并替换当前选中的文字，不发送。
 translate_and_send = {{ toml .TranslateAndSend.String }}
 translate_only = {{ toml .TranslateOnly.String }}
+translate_selection = {{ toml .TranslateSelection.String }}
 
 [target]
 # 只有这些进程在前台时热键才生效。不区分大小写。

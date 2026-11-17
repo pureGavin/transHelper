@@ -68,6 +68,8 @@ type Config struct {
 	TranslateAndSend hotkey.Combo
 	// TranslateOnly 是只翻译不发送的热键。
 	TranslateOnly hotkey.Combo
+	// TranslateSelection 是只翻译当前选区的热键。
+	TranslateSelection hotkey.Combo
 	// Processes 是前台进程白名单，只保留文件名，比较时不区分大小写。
 	Processes []string
 	// AutoCheckUpdate 为 true 时定期检查 GitHub Release。默认 false。
@@ -204,8 +206,9 @@ type modelSection struct {
 }
 
 type hotkeySection struct {
-	TranslateAndSend string `toml:"translate_and_send"`
-	TranslateOnly    string `toml:"translate_only"`
+	TranslateAndSend   string `toml:"translate_and_send"`
+	TranslateOnly      string `toml:"translate_only"`
+	TranslateSelection string `toml:"translate_selection"`
 }
 
 type targetSection struct {
@@ -280,7 +283,15 @@ func Parse(data []byte) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("hotkeys.translate_only: %w", err)
 	}
-	if cfg.TranslateAndSend.Same(cfg.TranslateOnly) {
+	selSpec := strings.TrimSpace(raw.Hotkeys.TranslateSelection)
+	if !md.IsDefined("hotkeys", "translate_selection") {
+		selSpec = "Ctrl+Alt+T"
+	}
+	cfg.TranslateSelection, err = hotkey.Parse(selSpec)
+	if err != nil {
+		return Config{}, fmt.Errorf("hotkeys.translate_selection: %w", err)
+	}
+	if cfg.TranslateAndSend.Same(cfg.TranslateOnly) || cfg.TranslateAndSend.Same(cfg.TranslateSelection) || cfg.TranslateOnly.Same(cfg.TranslateSelection) {
 		return Config{}, fmt.Errorf("两个热键不能相同")
 	}
 
@@ -392,16 +403,21 @@ func Default() Config {
 	if err != nil {
 		panic(err)
 	}
+	selection, err := hotkey.Parse("Ctrl+Alt+T")
+	if err != nil {
+		panic(err)
+	}
 	return Config{
-		BaseURL:          defaultBaseURL,
-		Model:            defaultModel,
-		Timeout:          defaultTimeoutSeconds * time.Second,
-		Temperature:      defaultTemperature,
-		TranslateAndSend: send,
-		TranslateOnly:    only,
-		Processes:        append([]string(nil), DefaultProcesses...),
-		Theme:            ThemeSystem,
-		Proxy:            Proxy{Type: "http"},
+		BaseURL:            defaultBaseURL,
+		Model:              defaultModel,
+		Timeout:            defaultTimeoutSeconds * time.Second,
+		Temperature:        defaultTemperature,
+		TranslateAndSend:   send,
+		TranslateOnly:      only,
+		TranslateSelection: selection,
+		Processes:          append([]string(nil), DefaultProcesses...),
+		Theme:              ThemeSystem,
+		Proxy:              Proxy{Type: "http"},
 	}
 }
 

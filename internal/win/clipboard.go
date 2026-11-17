@@ -12,6 +12,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"transhelper/internal/app"
 )
 
 const (
@@ -290,19 +292,22 @@ func restoreClipboard(items []clipItem) error {
 	})
 }
 
-// copySelection 清空剪贴板后发送 Ctrl+A、Ctrl+C，再用序列号确认复制确实发生了。
+// copySelection 清空剪贴板后复制文字，再用序列号确认复制确实发生了。
 // 序列号要在清空之后取样：清空本身就会让它加一。
-func copySelection() (string, error) {
+// ScopeSelection 不按 Ctrl+A，只复制当前选区。
+func copySelection(scope app.Scope) (string, error) {
 	if err := withClipboard(func() error {
 		return callOK(procEmptyClipboard)
 	}); err != nil {
 		return "", err
 	}
 	before, _, _ := procGetClipboardSequenceNumber.Call()
-	if err := chord(vkLControl, vkA); err != nil {
-		return "", err
+	if scope != app.ScopeSelection {
+		if err := chord(vkLControl, vkA); err != nil {
+			return "", err
+		}
+		time.Sleep(selectDelay)
 	}
-	time.Sleep(selectDelay)
 	if err := chord(vkLControl, vkC); err != nil {
 		return "", err
 	}

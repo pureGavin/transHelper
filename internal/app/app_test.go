@@ -12,19 +12,22 @@ import (
 )
 
 type fakeDesktop struct {
-	text       string
-	foreground uintptr
-	captureErr error
-	changed    bool
-	pasteErr   error
-	enterErr   error
-	restoreErr error
-	pasted     string
-	calls      []string
+	text         string
+	foreground   uintptr
+	captureErr   error
+	changed      bool
+	pasteErr     error
+	enterErr     error
+	restoreErr   error
+	pasted       string
+	calls        []string
+	captureScope Scope
+	pasteScope   Scope
 }
 
-func (f *fakeDesktop) Capture() (string, uintptr, error) {
+func (f *fakeDesktop) Capture(scope Scope) (string, uintptr, error) {
 	f.calls = append(f.calls, "capture")
+	f.captureScope = scope
 	return f.text, f.foreground, f.captureErr
 }
 
@@ -33,9 +36,10 @@ func (f *fakeDesktop) ForegroundChanged(uintptr) bool {
 	return f.changed
 }
 
-func (f *fakeDesktop) Paste(text string) error {
+func (f *fakeDesktop) Paste(text string, scope Scope) error {
 	f.calls = append(f.calls, "paste")
 	f.pasted = text
+	f.pasteScope = scope
 	return f.pasteErr
 }
 
@@ -92,6 +96,9 @@ func TestRunTranslateOnly(t *testing.T) {
 	}
 	if desktop.pasted != "Hello" {
 		t.Fatalf("粘贴内容 = %q", desktop.pasted)
+	}
+	if desktop.captureScope != ScopeAll || desktop.pasteScope != ScopeAll {
+		t.Fatalf("范围 = %v / %v", desktop.captureScope, desktop.pasteScope)
 	}
 	if strings.Join(desktop.calls, ",") != "capture,foreground,paste,restore" {
 		t.Fatalf("调用顺序 = %v", desktop.calls)
@@ -228,6 +235,79 @@ func TestRunRestoreErrorStillReported(t *testing.T) {
 	}
 	if notifier.msgs[0] != "翻译超时，原文未改动" || notifier.msgs[1] != "剪贴板可能没有还原" {
 		t.Fatalf("提示 = %v", notifier.msgs)
+	}
+}
+
+func TestRunTranslateSelectionKeepsEdgesAndDoesNotSend(t *testing.T) {
+	desktop := &fakeDesktop{text: "\n你好 \n", foreground: 7}
+	translator := &fakeTranslator{out: "Hello"}
+	runner := &Runner{Desktop: desktop, Translator: translator, Timeout: time.Second}
+
+	runner.Run(context.Background(), ActionTranslateSelection)
+
+	if translator.calls != 1 || translator.got != "你好" {
+		t.Fatalf("翻译调用 = %d %q", translator.calls, translator.got)
+	}
+	if desktop.pasted != "\nHello \n" {
+		t.Fatalf("粘贴内容 = %q", desktop.pasted)
+	}
+	if desktop.captureScope != ScopeSelection || desktop.pasteScope != ScopeSelection {
+		t.Fatalf("范围 = %v / %v", desktop.captureScope, desktop.pasteScope)
+	}
+	if strings.Join(desktop.calls, ",") != "capture,foreground,paste,restore" {
+		t.Fatalf("调用顺序 = %v", desktop.calls)
+	}
+}
+
+func TestRunTranslateSelectionEmptySkipsModel(t *testing.T) {
+	desktop := &fakeDesktop{text: " \n\t "}
+	translator := &fakeTranslator{out: "Hello"}
+	notifier := &fakeNotifier{}
+	runner := &Runner{Desktop: desktop, Translator: translator, Notifier: notifier}
+
+	runner.Run(context.Background(), ActionTranslateSelection)
+
+	if translator.calls != 0 {
+		t.Fatalf("空选区不应调用模型，调用了 %d 次", translator.calls)
+	}
+	if strings.Join(desktop.calls, ",") != "capture,restore" {
+		t.Fatalf("调用顺序 = %v", desktop.calls)
+	}
+	if len(notifier.msgs) != 1 || notifier.msgs[0] != "没有选中文字，未翻译" {
+		t.Fatalf("提示 = %v", notifier.msgs)
+	}
+}
+
+func TestRunMailQuoteSkipsModel(t *testing.T) {
+	quoted := "From: Alice\nSent: Monday\n你好"
+	tests := []struct {
+		name   string
+		action Action
+		want   string
+	}{
+		{name: "框选", action: ActionTranslateSelection, want: "选中的内容里有邮件引用，已取消，请只选自己写的部分"},
+		{name: "整框", action: ActionTranslateOnly, want: "输入框里有邮件引用，已取消，请先选中自己写的部分再用框选翻译"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			desktop := &fakeDesktop{text: quoted, foreground: 7}
+			translator := &fakeTranslator{out: "Hello"}
+			notifier := &fakeNotifier{}
+			runner := &Runner{Desktop: desktop, Translator: translator, Notifier: notifier}
+			runner.Run(context.Background(), tt.action)
+			if translator.calls != 0 {
+				t.Fatal("含邮件引用时不应翻译")
+			}
+			if strings.Join(desktop.calls, ",") != "capture,restore" {
+				t.Fatalf("调用顺序 = %v", desktop.calls)
+			}
+			if desktop.pasted != "" {
+				t.Fatalf("不应写回，实际 %q", desktop.pasted)
+			}
+			if len(notifier.msgs) != 1 || notifier.msgs[0] != tt.want {
+				t.Fatalf("提示 = %v", notifier.msgs)
+			}
+		})
 	}
 }
 

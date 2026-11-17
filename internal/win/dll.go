@@ -233,8 +233,9 @@ const (
 	cbGetCurSel       = 0x0147
 	cbGetDroppedState = 0x0157
 
-	hotkeySend = 1
-	hotkeyOnly = 2
+	hotkeySend      = 1
+	hotkeyOnly      = 2
+	hotkeySelection = 3
 )
 
 type keybdInput struct {

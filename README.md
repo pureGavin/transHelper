@@ -8,7 +8,7 @@
 
 ## 功能
 
-- 两个热键：`Alt+Enter` 翻译并发送，`Alt+T` 只翻译并替换输入框内容。组合可在配置里改。
+- 三个热键：`Alt+Enter` 翻译并发送，`Alt+T` 只翻译并替换输入框内容，`Ctrl+Alt+T` 只翻译并替换当前选中的文字。组合可在配置里改。
 - 只在白名单进程处于前台时注册热键，默认是新版和经典版 Teams。
 - 模型走 OpenAI 兼容接口，地址和模型名放在配置文件里。
 - 超时、报错或空文本时不粘贴、不发送，保留原文，托盘冒泡并响一声。
@@ -19,7 +19,7 @@
 1. 打开 [Releases](https://github.com/pureGavin/transHelper/releases/latest)，下载 `transHelper-YYYY.MM.x-windows-amd64.zip`。
 2. 解压。
 3. 双击 `transhelper.exe`。没有黑色控制台窗口，托盘里出现图标。同目录没有 `transhelper.toml` 时会自动创建，提示填写模型地址，并打开设置窗口。已有配置不会被覆盖。右键托盘图标可以选择「设置…」。
-4. 在 Teams 输入框里按 `Alt+T` 或 `Alt+Enter`。
+4. 在 Teams 输入框里按 `Alt+T` 或 `Alt+Enter`。回复邮件时先选中自己写的部分，再按 `Ctrl+Alt+T`。
 5. 退出：在托盘图标上右键，选择“退出”。
 
 正式版不在 exe 旁边写日志。需要排查时，在 cmd 里运行 `transhelper.exe 2> transhelper.log`，日志会进这个文件，只记错误、耗时、字数和通知文字，不记要翻译的消息内容。同一时间只能运行一个实例。
@@ -45,7 +45,8 @@
 - `model.system_prompt`：留空则使用程序内置的提示词。
 - `hotkeys.translate_and_send`：默认 `Alt+Enter`，翻译后替换输入框内容并回车发送。
 - `hotkeys.translate_only`：默认 `Alt+T`，只替换输入框内容，不发送。
-- `target.processes`：前台进程白名单，不区分大小写。默认是 `ms-teams.exe`（新版 Teams）和 `Teams.exe`（经典版）。
+- `hotkeys.translate_selection`：默认 `Ctrl+Alt+T`，只翻译并替换当前选中的文字，不发送。没有选中文字时不调用模型。
+- `target.processes`：前台进程白名单，不区分大小写。默认是 `ms-teams.exe`（新版 Teams）和 `Teams.exe`（经典版）。微信也可以：3.x 一般是 `WeChat.exe`，4.0 之后一般是 `Weixin.exe`，把任务管理器里的进程名加进这个列表即可。
 - `update.auto_check`：是否自动检查更新。默认 `false`。托盘菜单里的「自动检查更新」会写回这个字段。
 - `ui.theme`：设置窗口的界面主题，`system`、`light` 或 `dark`。默认 `system`，跟随 Windows 的应用主题。
 - `proxy.enabled`：是否使用下面的代理。默认 `false`。为 `false` 时沿用 `HTTPS_PROXY` 等环境变量。
@@ -54,7 +55,7 @@
 - `proxy.auth`、`proxy.username`、`proxy.password`：是否向代理提供用户名和密码。启用身份验证时用户名必填。密码保留首尾空格。
 - `proxy.use_for_model`：翻译请求是否也走代理。默认 `false`。检查更新和下载更新只要启用代理就会走。
 
-热键至少要带 Ctrl、Alt、Win 中的一个，两个热键不能相同。配置里出现拼错的字段会直接报错。
+热键至少要带 Ctrl、Alt、Win 中的一个，三个热键两两不能相同。配置里出现拼错的字段会直接报错。
 
 ## 检查更新
 
@@ -186,6 +187,9 @@ exe 没有代码签名。第一次运行时，Windows 可能提示“Windows 已
 ## 已知限制
 
 - 拼音候选框还开着时，`Alt+Enter` 不会把消息发出去，但回车会被输入法吃掉，没上屏的拼音可能粘在译文后面。`Alt+T` 只替换已经上屏的文字。程序不会先按 Esc 取消组字：没有组字时，Esc 在 Teams 里可能关掉回复框。
+- 框选翻译期间不要移动光标或改选区，译文会写到翻译完成时的选区上。
+- 选区在只读区域（例如已经收到的消息）时，粘贴不会生效，程序也看不出来。
+- 选区或整个输入框里如果有邮件引用头，翻译会取消。判断靠 `From:` 加 `Sent:`、`-----Original Message-----`、`On … wrote:` 这类特征，认不全各种邮件格式。替换错了可以用 `Ctrl+Z` 撤回。
 - Teams 把输入框里的一个空行复制出来是四个换行。写回后显示仍是一个空行。
 - 大约 390 字的消息，在 Teams 里翻译大约要 14 秒。默认超时是 20 秒，更长的消息可以在配置里把 `timeout_seconds` 调大。
 

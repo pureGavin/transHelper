@@ -18,8 +18,8 @@ type Desktop struct {
 	pasted bool
 }
 
-// Capture 备份剪贴板并读出输入框里的文本。
-func (d *Desktop) Capture() (string, uintptr, error) {
+// Capture 备份剪贴板并读出文本。scope 为 ScopeSelection 时不先全选。
+func (d *Desktop) Capture(scope app.Scope) (string, uintptr, error) {
 	fg := d.Expect
 	if fg == 0 {
 		fg = currentForeground()
@@ -37,7 +37,7 @@ func (d *Desktop) Capture() (string, uintptr, error) {
 	d.backup = items
 	d.backed = true
 	d.pasted = false
-	text, err := copySelection()
+	text, err := copySelection(scope)
 	if err != nil {
 		return "", 0, err
 	}
@@ -52,15 +52,18 @@ func (d *Desktop) ForegroundChanged(token uintptr) bool {
 	return currentForeground() != token
 }
 
-// Paste 把文本写进剪贴板，再全选并粘贴。文本里的 LF 会转成 CRLF。
-func (d *Desktop) Paste(text string) error {
+// Paste 把文本写进剪贴板再粘贴。文本里的 LF 会转成 CRLF。
+// scope 为 ScopeSelection 时不按 Ctrl+A，只替换当前选区。
+func (d *Desktop) Paste(text string, scope app.Scope) error {
 	if err := writeClipboardText(toCRLF(text)); err != nil {
 		return err
 	}
-	if err := chord(vkLControl, vkA); err != nil {
-		return err
+	if scope != app.ScopeSelection {
+		if err := chord(vkLControl, vkA); err != nil {
+			return err
+		}
+		time.Sleep(selectDelay)
 	}
-	time.Sleep(selectDelay)
 	if err := chord(vkLControl, vkV); err != nil {
 		return err
 	}
