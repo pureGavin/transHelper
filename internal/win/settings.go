@@ -74,10 +74,11 @@ const (
 	idProxyPass  = 207
 	idProxyModel = 208
 
-	pageGeneral = 0
-	pageNetwork = 1
-	pageAbout   = 2
-	pageCount   = 3
+	pageGeneral   = 0
+	pageProcesses = 1
+	pageNetwork   = 2
+	pageAbout     = 3
+	pageCount     = 4
 
 	emSetLimitText     = 0x00C5
 	emSetPasswordChar  = 0x00CC
@@ -135,7 +136,7 @@ var (
 )
 
 // settingsWindow 是托盘菜单里的设置窗口。同一时间只开一个。
-// 顶部是三个标签，底部的应用和取消对所有页一起生效。
+// 顶部是四个标签，底部的应用和取消对所有页一起生效。
 // 中间的 body 可以竖向滚动，标签和按钮不跟着动。
 type settingsWindow struct {
 	hwnd        uintptr
@@ -156,6 +157,7 @@ type settingsWindow struct {
 	buttonTheme uintptr
 	tabs        uintptr
 	general     generalPage
+	process     processPage
 	network     networkPage
 	about       aboutPage
 	applyBtn    uintptr
@@ -295,7 +297,7 @@ func (s *settingsWindow) createChildren(h *host) error {
 	if s.tabs, err = createControl("SysTabControl32", "", tabStyle, 0, 0, 10, 10, s.hwnd, idTabs, h.instance); err != nil {
 		return err
 	}
-	for _, title := range []string{"通用", "网络", "关于"} {
+	for _, title := range []string{"通用", "进程", "网络", "关于"} {
 		if err := s.addTab(title); err != nil {
 			return err
 		}
@@ -305,6 +307,9 @@ func (s *settingsWindow) createChildren(h *host) error {
 		return err
 	}
 	if err := s.createGeneral(h.instance); err != nil {
+		return err
+	}
+	if err := s.createProcess(h.instance); err != nil {
 		return err
 	}
 	if err := s.createNetwork(h.instance); err != nil {
@@ -420,6 +425,7 @@ func (s *settingsWindow) fill(h *host) {
 	}
 	s.about.fill(version, runtime.Version(), digest)
 	s.network.fill(s.base)
+	s.process.fill(s.base.Processes)
 }
 
 func (s *settingsWindow) scale(v int) int {
@@ -442,11 +448,18 @@ func maxPageBody() int {
 	if net := networkBody(); net > body {
 		body = net
 	}
+	if proc := processBody(); proc > body {
+		body = proc
+	}
 	return body
 }
 
 func (s *settingsWindow) clientSize() (int32, int32) {
 	w := s.scale(layoutMargin + layoutLabelW + layoutGap + layoutEditW + layoutMargin)
+	// 进程页左右两个列表要比单列输入框更宽，长进程名才不会被裁掉。
+	if proc := s.scale(processPageWidth()); proc > w {
+		w = proc
+	}
 	// 分段取整，和 placeBody 用的是同一套减法，完整高度下内容区刚好放下，不会多出滚动条。
 	h := s.contentTop() + s.scale(maxPageBody()) + s.scale(8+layoutBtnH+layoutMargin)
 	return int32(w), int32(h)
@@ -532,14 +545,20 @@ func (s *settingsWindow) placeButtons(clientW, clientH int) {
 }
 
 func (s *settingsWindow) showPage(page int) {
-	if page != s.page {
+	switched := page != s.page
+	if switched {
 		s.scrollPos = 0
 		s.wheelAcc = 0
 	}
 	s.page = page
 	showControls(s.general.controls(), page == pageGeneral)
+	s.process.show(page == pageProcesses)
 	s.network.show(page == pageNetwork)
 	showControls(s.about.controls(), page == pageAbout)
+	// 每次切到这一页都重新列出正在运行的程序。移回左边的进程即使没在运行也保留。
+	if switched && page == pageProcesses {
+		s.process.refresh()
+	}
 	s.layoutBody()
 }
 
@@ -688,6 +707,7 @@ func (s *settingsWindow) applyFont() {
 func (s *settingsWindow) controls() []uintptr {
 	out := []uintptr{s.tabs, s.applyBtn, s.cancel}
 	out = append(out, s.general.controls()...)
+	out = append(out, s.process.controls()...)
 	out = append(out, s.network.controls()...)
 	out = append(out, s.about.controls()...)
 	return out
@@ -763,6 +783,7 @@ func (s *settingsWindow) createTips() {
 		{s.about.digest, "和 Release 说明里的值核对"},
 	}
 	items = append(items, s.network.tips()...)
+	items = append(items, s.process.tips()...)
 	s.tipText = make([][]uint16, len(items))
 	for i, item := range items {
 		if item.hwnd == 0 || item.text == "" {
@@ -862,6 +883,7 @@ func (s *settingsWindow) apply() {
 		return
 	}
 	cfg.Proxy = proxy
+	cfg.Processes = append([]string(nil), s.process.enabledNames...)
 	if err := config.Save(h.configPath, cfg); err != nil {
 		if strings.Contains(err.Error(), "proxy.") {
 			s.reject(pageNetwork, 0, err.Error())
@@ -1051,7 +1073,9 @@ func settingsWndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 	}
 	switch message {
 	case wmCommand:
-		switch wParam & 0xFFFF {
+		id := wParam & 0xFFFF
+		code := wParam >> 16
+		switch id {
 		case idApply:
 			s.apply()
 		case idCancel:
@@ -1059,11 +1083,13 @@ func settingsWndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 		case idShowKey:
 			s.syncPassword()
 		case idTheme:
-			if wParam>>16 == cbnSelChange {
+			if code == cbnSelChange {
 				s.previewTheme()
 			}
+		case idProcApps, idProcEnabled, idProcAdd, idProcRemove:
+			s.process.onCommand(id, code)
 		default:
-			s.network.onCommand(wParam & 0xFFFF)
+			s.network.onCommand(id)
 		}
 		return 0
 	case wmNotify:

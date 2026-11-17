@@ -47,7 +47,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uidrive.ps1 stop
 | `set <控件> <文字>` | 写输入框 |
 | `click <控件>` | 点按钮或复选框 |
 | `select theme dark` | 选下拉项。`theme` 是 `system`、`light`、`dark`；`proxyType` 是 `http`、`socks5` |
-| `tab network` | 切到 `general`、`network` 或 `about` |
+| `pick procApps notepad.exe` | 选中列表里的一项。列表是 `procApps` 或 `procEnabled` |
+| `tab network` | 切到 `general`、`processes`、`network` 或 `about` |
 | `key esc` | `esc` 关闭不保存，`enter` 在非按钮上等于应用 |
 | `dialog` | 读提示框文字。`dialog ok` 点确定 |
 | `close` | 关闭设置窗口，不保存 |
@@ -58,7 +59,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uidrive.ps1 stop
 | `log` | 读测试实例的日志 |
 | `stop` | 退出测试实例 |
 
-控件名：`apply`、`cancel`、`url`、`model`、`key`、`showKey`、`timeout`、`theme`、`tabs`、`link`、`proxyOn`、`proxyType`、`proxyHost`、`proxyPort`、`proxyAuth`、`proxyUser`、`proxyPass`、`proxyModel`。
+控件名：`apply`、`cancel`、`url`、`model`、`key`、`showKey`、`timeout`、`theme`、`tabs`、`link`、`proxyOn`、`proxyType`、`proxyHost`、`proxyPort`、`proxyAuth`、`proxyUser`、`proxyPass`、`proxyModel`、`procApps`、`procEnabled`、`procAdd`、`procRemove`。
+
+列表控件的 `state` 里有 `items` 和 `selected`。`procApps` 是左边正在运行的程序，`procEnabled` 是右边启用翻译的程序。
 
 `state` 里密码框没有正文。Windows 会拦住别的进程读取密码框，所以 `textLen` 也经常是 0，不能靠它判断写进去没有。勾选「显示」只把 `passwordChar` 变成 0。要确认密钥，点「应用」后读测试配置，不要把密钥打到对话里。
 

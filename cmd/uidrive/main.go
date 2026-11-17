@@ -74,9 +74,14 @@ func run(command string, args []string) error {
 			return fmt.Errorf("用法: uidrive select theme system|light|dark  或  select proxyType http|socks5")
 		}
 		return withApp(func(app *win.App) error { return app.Select(args[0], args[1]) })
+	case "pick":
+		if len(args) != 2 {
+			return fmt.Errorf("用法: uidrive pick procApps|procEnabled <进程名>")
+		}
+		return withApp(func(app *win.App) error { return app.Pick(args[0], args[1]) })
 	case "tab":
 		if len(args) != 1 {
-			return fmt.Errorf("用法: uidrive tab general|network|about")
+			return fmt.Errorf("用法: uidrive tab general|processes|network|about")
 		}
 		return withApp(func(app *win.App) error { return app.Tab(args[0]) })
 	case "key":
@@ -234,7 +239,8 @@ func usage() {
   click <控件>
   select theme system|light|dark
   select proxyType http|socks5
-  tab general|network|about
+  pick procApps|procEnabled <进程名>
+  tab general|processes|network|about
   key esc|enter
   dialog [ok]
   balloon-click
@@ -247,6 +253,7 @@ func usage() {
 
 控件: apply cancel url model key showKey timeout theme tabs link
       proxyOn proxyType proxyHost proxyPort proxyAuth proxyUser proxyPass proxyModel
+      procApps procEnabled procAdd procRemove
 
 密码框只报告长度。先在项目根目录执行 . .\scripts\env.ps1。
 `)

@@ -101,6 +101,10 @@ var (
 	procGetNextDlgTabItem          = user32.NewProc("GetNextDlgTabItem")
 	procLoadCursor                 = user32.NewProc("LoadCursorW")
 	procEnableWindow               = user32.NewProc("EnableWindow")
+	procEnumWindows                = user32.NewProc("EnumWindows")
+	procGetWindow                  = user32.NewProc("GetWindow")
+	procIsWindowVisible            = user32.NewProc("IsWindowVisible")
+	procGetWindowThreadProcessId   = user32.NewProc("GetWindowThreadProcessId")
 
 	procCreateFontIndirect   = gdi32.NewProc("CreateFontIndirectW")
 	procCreateSolidBrush     = gdi32.NewProc("CreateSolidBrush")
@@ -215,6 +219,8 @@ const (
 	swHide              = 0
 	// swShowNA 只显示，不把焦点抢走。切标签时用来露出当前页的控件。
 	swShowNA = 8
+	// gwOwner 是 GetWindow 的 GW_OWNER。有所有者的窗口不算独立的程序窗口。
+	gwOwner = 4
 
 	tcmFirst       = 0x1300
 	tcmGetCurSel   = tcmFirst + 11

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -376,6 +377,91 @@ func TestE2E_Scroll(t *testing.T) {
 	}
 }
 
+func TestE2E_Processes(t *testing.T) {
+	app := newDriveApp(t)
+	openDriveSettings(t, app)
+	mustDrive(t, app.Tab("processes"))
+	if err := waitDrivePage(t, app, "processes"); err != nil {
+		t.Fatal(err)
+	}
+	state, err := app.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	enabled := state.Controls["procEnabled"].Items
+	if !containsFold(enabled, "ms-teams.exe") || !containsFold(enabled, "Teams.exe") {
+		t.Fatalf("默认启用 = %#v", enabled)
+	}
+	exe, err := processExe(app.PID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	own := filepath.Base(exe)
+	if containsFold(state.Controls["procApps"].Items, own) {
+		t.Fatalf("左边出现了测试实例 %s: %#v", own, state.Controls["procApps"].Items)
+	}
+	if state.Controls["procAdd"].Enabled || state.Controls["procRemove"].Enabled {
+		t.Fatalf("没选中时箭头不该可用: %+v %+v", state.Controls["procAdd"], state.Controls["procRemove"])
+	}
+
+	for _, name := range []string{"ms-teams.exe", "Teams.exe"} {
+		mustDrive(t, app.Pick("procEnabled", name))
+		if _, err := app.WaitControl("procRemove", func(ctrl ControlState) bool { return ctrl.Enabled }); err != nil {
+			t.Fatal(name, err)
+		}
+		mustDrive(t, app.Click("procRemove"))
+		if err := waitDriveList(t, app, "procEnabled", name, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustDrive(t, app.Click("apply"))
+	if _, err := app.WaitSettings(false); err != nil {
+		dialog, _ := app.Dialog()
+		t.Fatalf("设置窗口没有关闭，弹窗 %q", dialog.Text)
+	}
+	cfg := loadDriveConfig(t, app)
+	if len(cfg.Processes) != 0 {
+		t.Fatalf("清空后 Processes = %#v", cfg.Processes)
+	}
+	if !strings.Contains(driveConfigText(t, app), "processes = []") {
+		t.Fatalf("配置没有写成空列表:\n%s", driveConfigText(t, app))
+	}
+
+	openDriveSettings(t, app)
+	mustDrive(t, app.Tab("processes"))
+	if err := waitDrivePage(t, app, "processes"); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitDriveListLen(t, app, "procEnabled", 0); err != nil {
+		t.Fatal(err)
+	}
+	state, err = app.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	left := state.Controls["procApps"].Items
+	if len(left) == 0 {
+		t.Fatal("左边没有正在运行的程序")
+	}
+	first := left[0]
+	mustDrive(t, app.Pick("procApps", first))
+	if _, err := app.WaitControl("procAdd", func(ctrl ControlState) bool { return ctrl.Enabled }); err != nil {
+		t.Fatal(err)
+	}
+	mustDrive(t, app.Click("procAdd"))
+	if err := waitDriveList(t, app, "procEnabled", first, true); err != nil {
+		t.Fatal(err)
+	}
+	mustDrive(t, app.Click("apply"))
+	if _, err := app.WaitSettings(false); err != nil {
+		t.Fatal(err)
+	}
+	cfg = loadDriveConfig(t, app)
+	if len(cfg.Processes) != 1 || !strings.EqualFold(cfg.Processes[0], first) {
+		t.Fatalf("写回 = %#v，期望 %s", cfg.Processes, first)
+	}
+}
+
 func TestE2E_Exit(t *testing.T) {
 	app := newDriveApp(t)
 	if err := app.Stop(); err != nil {
@@ -428,6 +514,37 @@ func driveConfigText(t *testing.T, app *App) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+func containsFold(items []string, name string) bool {
+	for _, item := range items {
+		if strings.EqualFold(item, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func waitDriveList(t *testing.T, app *App, control, name string, want bool) error {
+	t.Helper()
+	return poll(driveTimeout, func() bool {
+		state, err := app.State()
+		if err != nil {
+			return false
+		}
+		return containsFold(state.Controls[control].Items, name) == want
+	})
+}
+
+func waitDriveListLen(t *testing.T, app *App, control string, n int) error {
+	t.Helper()
+	return poll(driveTimeout, func() bool {
+		state, err := app.State()
+		if err != nil {
+			return false
+		}
+		return len(state.Controls[control].Items) == n
+	})
 }
 
 func waitDrivePage(t *testing.T, app *App, page string) error {

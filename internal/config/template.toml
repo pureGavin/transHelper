@@ -25,7 +25,8 @@ translate_selection = {{ toml .TranslateSelection.String }}
 
 [target]
 # 只有这些进程在前台时热键才生效。不区分大小写。
-# ms-teams.exe 是新版 Teams，Teams.exe 是经典版。
+# 留空表示所有程序都不启用。没写这一项时默认是 Teams。
+# ms-teams.exe 是新版 Teams，Teams.exe 是经典版。微信 3.x 一般是 WeChat.exe，4.0 之后一般是 Weixin.exe。
 processes = [{{ range $i, $name := .Processes }}{{ if $i }}, {{ end }}{{ toml $name }}{{ end }}]
 
 [update]

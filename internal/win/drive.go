@@ -32,7 +32,6 @@ const (
 	emGetPasswordChar = 0x00D2
 	// TCM_SETCURFOCUS 是 TCM_FIRST + 48。加 49 会变成 TCM_SETMINTABWIDTH，标签不会切换。
 	tcmSetCurFocus  = tcmFirst + 48
-	gwOwner         = 4
 	smtoAbortIfHung = 0x0002
 	sendTimeoutMS   = 2000
 	stillActive     = 259
@@ -41,13 +40,9 @@ const (
 )
 
 var (
-	procEnumWindows              = user32.NewProc("EnumWindows")
-	procEnumChildWindows         = user32.NewProc("EnumChildWindows")
-	procGetWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
-	procGetDlgCtrlID             = user32.NewProc("GetDlgCtrlID")
-	procIsWindowVisible          = user32.NewProc("IsWindowVisible")
-	procGetWindow                = user32.NewProc("GetWindow")
-	procSendMessageTimeout       = user32.NewProc("SendMessageTimeoutW")
+	procEnumChildWindows   = user32.NewProc("EnumChildWindows")
+	procGetDlgCtrlID       = user32.NewProc("GetDlgCtrlID")
+	procSendMessageTimeout = user32.NewProc("SendMessageTimeoutW")
 
 	enumCB      = windows.NewCallback(enumTop)
 	enumChildCB = windows.NewCallback(enumChild)
@@ -66,6 +61,7 @@ type controlSpec struct {
 	id     uintptr
 	secret bool
 	combo  []string
+	list   bool
 }
 
 // 名字和设置窗口里的控件 ID 绑在一起。ID 改了这里会编译失败。
@@ -88,6 +84,10 @@ var controlSpecs = []controlSpec{
 	{name: "proxyUser", id: idProxyUser},
 	{name: "proxyPass", id: idProxyPass, secret: true},
 	{name: "proxyModel", id: idProxyModel},
+	{name: "procApps", id: idProcApps, list: true},
+	{name: "procEnabled", id: idProcEnabled, list: true},
+	{name: "procAdd", id: idProcAdd},
+	{name: "procRemove", id: idProcRemove},
 }
 
 var menuByName = map[string]uintptr{
@@ -96,7 +96,7 @@ var menuByName = map[string]uintptr{
 	"auto-check":   menuAutoCheck,
 }
 
-var pageNames = []string{"general", "network", "about"}
+var pageNames = []string{"general", "processes", "network", "about"}
 
 // App 是一个正在运行的 transHelper。测试按控件 ID 给它发消息，不点屏幕。
 type App struct {
@@ -128,13 +128,15 @@ type UIState struct {
 
 // ControlState 是一个控件的文字、勾选和是否能操作。
 type ControlState struct {
-	Text         string `json:"text,omitempty"`
-	TextLen      int    `json:"textLen"`
-	Checked      bool   `json:"checked"`
-	Enabled      bool   `json:"enabled"`
-	Visible      bool   `json:"visible"`
-	PasswordChar *int   `json:"passwordChar,omitempty"`
-	Value        string `json:"value,omitempty"`
+	Text         string   `json:"text,omitempty"`
+	TextLen      int      `json:"textLen"`
+	Checked      bool     `json:"checked"`
+	Enabled      bool     `json:"enabled"`
+	Visible      bool     `json:"visible"`
+	PasswordChar *int     `json:"passwordChar,omitempty"`
+	Value        string   `json:"value,omitempty"`
+	Items        []string `json:"items,omitempty"`
+	Selected     string   `json:"selected,omitempty"`
 }
 
 // DialogState 是设置窗口弹出的提示框。
@@ -407,6 +409,36 @@ func (a *App) Select(name, value string) error {
 	}
 	// 父窗口是内容区，它会把命令再投递给设置窗口。直接投给设置窗口，主题预览能马上发生。
 	return postMessage(settings, wmCommand, uintptr(spec.id)|(uintptr(cbnSelChange)<<16), hwnd)
+}
+
+// Pick 选中列表里的一项，并通知设置窗口更新箭头按钮。
+func (a *App) Pick(name, item string) error {
+	spec, hwnd, err := a.control(name)
+	if err != nil {
+		return err
+	}
+	if !spec.list {
+		return fmt.Errorf("%s 不是列表", name)
+	}
+	items, _ := readListBox(hwnd)
+	index := -1
+	for i, text := range items {
+		if strings.EqualFold(text, item) {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return fmt.Errorf("%s 里没有 %s", name, item)
+	}
+	if _, err := sendMessage(hwnd, lbSetCurSel, uintptr(index), 0); err != nil {
+		return err
+	}
+	settings, err := a.requireSettings()
+	if err != nil {
+		return err
+	}
+	return postMessage(settings, wmCommand, uintptr(spec.id)|(uintptr(lbnSelChange)<<16), hwnd)
 }
 
 // Tab 切换标签。用 TCM_SETCURFOCUS，让控件在自己进程里发出选中通知。
@@ -768,7 +800,41 @@ func readControl(spec controlSpec, hwnd uintptr) ControlState {
 			ctrl.Value = spec.combo[got]
 		}
 	}
+	if spec.list {
+		items, selected := readListBox(hwnd)
+		ctrl.Items = items
+		ctrl.Selected = selected
+	}
 	return ctrl
+}
+
+func readListBox(hwnd uintptr) (items []string, selected string) {
+	count, err := sendMessage(hwnd, lbGetCount, 0, 0)
+	if err != nil || int32(count) <= 0 {
+		return nil, ""
+	}
+	sel, _ := sendMessage(hwnd, lbGetCurSel, 0, 0)
+	for i := 0; i < int(count); i++ {
+		text := readListItem(hwnd, i)
+		items = append(items, text)
+		if int(sel) == i {
+			selected = text
+		}
+	}
+	return items, selected
+}
+
+func readListItem(hwnd uintptr, index int) string {
+	n, err := sendMessage(hwnd, lbGetTextLen, uintptr(index), 0)
+	if err != nil || int32(n) <= 0 || n > 1<<20 {
+		return ""
+	}
+	buf := make([]uint16, int(n)+1)
+	if _, err := sendMessage(hwnd, lbGetText, uintptr(index), uintptr(unsafe.Pointer(&buf[0]))); err != nil {
+		return ""
+	}
+	runtime.KeepAlive(buf)
+	return windows.UTF16ToString(buf)
 }
 
 func dialogText(hwnd uintptr) string {
@@ -909,11 +975,6 @@ func enumTop(hwnd, _ uintptr) uintptr {
 func enumChild(hwnd, _ uintptr) uintptr {
 	enumHits = append(enumHits, hwnd)
 	return 1
-}
-
-func windowVisible(hwnd uintptr) bool {
-	r, _, _ := procIsWindowVisible.Call(hwnd)
-	return r != 0
 }
 
 func sendMessage(hwnd, msg, wParam, lParam uintptr) (uintptr, error) {

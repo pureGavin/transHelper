@@ -246,13 +246,14 @@ func (s *settingsWindow) applyControlThemes() {
 	for _, hwnd := range []uintptr{
 		s.applyBtn, s.cancel, s.body, s.tip, s.tabs, s.about.link,
 		s.general.showKey, s.network.enable, s.network.auth, s.network.forModel,
+		s.process.add, s.process.remove,
 	} {
 		setWindowTheme(hwnd, explorer)
 	}
 	for _, hwnd := range []uintptr{
 		s.general.url, s.general.model, s.general.key, s.general.timeout, s.general.theme,
 		s.network.kind, s.network.host, s.network.port, s.network.user, s.network.pass,
-		s.about.digest,
+		s.about.digest, s.process.running, s.process.enabled,
 	} {
 		setWindowTheme(hwnd, field)
 	}

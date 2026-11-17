@@ -80,6 +80,40 @@ timeout_seconds = 1
 	}
 }
 
+func TestParseEmptyProcesses(t *testing.T) {
+	cfg, err := Parse([]byte(`
+[model]
+base_url = "http://127.0.0.1:9/v1"
+model = "demo"
+
+[target]
+processes = []
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Processes) != 0 {
+		t.Fatalf("Processes = %#v，显式空列表应该表示都不启用", cfg.Processes)
+	}
+	if cfg.AllowsProcess("ms-teams.exe") || cfg.AllowsProcess("notepad.exe") {
+		t.Fatal("空名单不应该匹配任何进程")
+	}
+	data, err := Render(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "processes = []") {
+		t.Fatalf("空名单应该写成 processes = []\n%s", data)
+	}
+	again, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again.Processes) != 0 {
+		t.Fatalf("写回后再读 Processes = %#v", again.Processes)
+	}
+}
+
 func TestParseBOM(t *testing.T) {
 	body := []byte{0xEF, 0xBB, 0xBF}
 	body = append(body, []byte(`
@@ -189,18 +223,6 @@ model = "demo"
 translate_only = "Ctrl+Alt+T"
 `,
 			want: "不能相同",
-		},
-		{
-			name: "白名单为空",
-			toml: `
-[model]
-base_url = "http://127.0.0.1:9/v1"
-model = "demo"
-
-[target]
-processes = []
-`,
-			want: "processes",
 		},
 		{
 			name: "进程名重复",

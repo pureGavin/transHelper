@@ -235,6 +235,8 @@ func (s *settingsWindow) placeBody(clientW, clientH int) {
 func (s *settingsWindow) pageContentHeight() int {
 	rows := generalBody()
 	switch s.page {
+	case pageProcesses:
+		rows = processBody()
 	case pageNetwork:
 		rows = networkBody()
 	case pageAbout:
@@ -260,6 +262,7 @@ func (s *settingsWindow) layoutBody() {
 	width := clientWidth(s.body)
 	top := -s.scrollPos
 	s.placeGeneral(top, width)
+	s.process.place(s, top, width)
 	s.network.place(s, top, width)
 	s.placeAbout(top, width)
 }

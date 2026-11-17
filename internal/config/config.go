@@ -298,9 +298,7 @@ func Parse(data []byte) (Config, error) {
 	if !md.IsDefined("target", "processes") {
 		cfg.Processes = append([]string(nil), DefaultProcesses...)
 	} else {
-		if len(raw.Target.Processes) == 0 {
-			return Config{}, fmt.Errorf("target.processes 不能为空")
-		}
+		// 显式写成空列表表示没有任何程序启用翻译，不再回落到默认的 Teams。
 		seen := make(map[string]struct{}, len(raw.Target.Processes))
 		for _, process := range raw.Target.Processes {
 			name := filepath.Base(strings.TrimSpace(process))
