@@ -154,6 +154,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uidrive.ps1 stop
 - DEP（`NX_COMPAT`），数据页不能当代码执行。
 - 没有 COFF 符号表，也没有 `.debug` 段，由 `-s -w` 去掉。
 
+启动时还会打开三项进程缓解策略，开发运行和正式版都一样。某一项设置失败时只记一条日志，程序继续运行：
+
+- 只加载带微软签名的 DLL。
+- 按文件名加载 DLL 时优先从 System32 找，并拒绝远程路径和低完整性映像。
+- 禁止在运行时生成或改写可执行代码。
+
+因此第三方输入法、读屏软件或安全软件注入的 DLL 进不了 transHelper 自己的窗口。设置窗口里是地址、模型、密钥这类输入；在 Teams 里打字不受影响。
+
 Go 链接器不支持 MSVC 的栈 canary（`/GS`）和控制流保护（`/guard:cf`）。运行时的 pclntab 会保留函数名，这是 Go 做回溯要用的，去不掉。
 
 ### 检查译文

@@ -29,6 +29,8 @@ var version = "dev"
 func main() {
 	// 窗口、热键和剪贴板都绑在创建它们的线程上。
 	runtime.LockOSThread()
+	// 策略只影响本进程。趁配置和窗口还没加载 DLL 之前打开。
+	hardenErr := win.Harden()
 
 	configPath := flag.String("config", "", "配置文件路径，默认是 exe 同目录的 transhelper.toml")
 	flag.Parse()
@@ -47,6 +49,9 @@ func main() {
 	}
 
 	logger := newLogger()
+	if hardenErr != nil {
+		logger.Printf("进程保护没有全部打开: %v", hardenErr)
+	}
 	logger.Printf("transHelper %s 已加载配置 %s，模型 %s", version, path, cfg.Model)
 	// 新进程用环境变量得知自己是刚更新完的。清掉它，避免以后再启动时重复提示。
 	justUpdated := os.Getenv("TRANSHELPER_UPDATED") == "1"

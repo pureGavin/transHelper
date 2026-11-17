@@ -24,6 +24,7 @@
 - 代码注释用中文。导出的类型和函数写中文文档注释，按 Go 惯例以标识符名开头，例如 `// Translate 把中文译成英文`。
 - Win32 调用、按键时序、边界情况等看代码看不出原因的地方，用中文注释写明原因。
 - Win32 调用只放在 `internal/win`。热键解析、配置、翻译、检查更新和流程编排都不引用它，方便单测。
+- 启动时由 `win.Harden` 打开进程缓解策略：只加载微软签名的 DLL，优先从 System32 加载并拒绝远程路径和低完整性映像，禁止运行时生成代码。新增依赖不能需要第三方 DLL，也不能在运行时生成代码。
 - 模型密钥只写在被 Git 忽略的 `transhelper.toml`。内置模板 `internal/config/template.toml` 的 `api_key` 留空，地址用 `http://localhost:8000/v1` 这种占位。
 - 示例配置和测试里不写内网地址，用 `http://localhost:8000/v1` 这样的占位地址。
 - `.ps1` 用带 BOM 的 UTF-8 保存：Windows PowerShell 5.1 读无 BOM 的文件时按系统代码页解码，中文会乱码。Go 源码用无 BOM 的 UTF-8。
