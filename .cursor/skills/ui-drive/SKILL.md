@@ -59,7 +59,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uidrive.ps1 stop
 | `log` | 读测试实例的日志 |
 | `stop` | 退出测试实例 |
 
-控件名：`apply`、`cancel`、`url`、`model`、`key`、`showKey`、`timeout`、`theme`、`tabs`、`link`、`proxyOn`、`proxyType`、`proxyHost`、`proxyPort`、`proxyAuth`、`proxyUser`、`proxyPass`、`proxyModel`、`procApps`、`procEnabled`、`procAdd`、`procRemove`。
+控件名：`apply`、`cancel`、`url`、`model`、`key`、`showKey`、`timeout`、`theme`、`test`、`testStatus`、`tabs`、`link`、`proxyOn`、`proxyType`、`proxyHost`、`proxyPort`、`proxyAuth`、`proxyUser`、`proxyPass`、`proxyModel`、`procApps`、`procEnabled`、`procAdd`、`procRemove`。`testStatus` 是「测试」按钮右边的结果。
 
 列表控件的 `state` 里有 `items`、`selected` 和 `top`。`top` 是列表滚动到第几行，从 0 起。`procApps` 是左边正在运行的程序，`procEnabled` 是右边启用翻译的程序。
 

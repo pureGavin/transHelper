@@ -268,7 +268,7 @@ func usage() {
   close                          关掉设置窗口，不保存
   stop                           退出测试实例
 
-控件: apply cancel url model key showKey timeout theme tabs link
+控件: apply cancel url model key showKey timeout theme test testStatus tabs link
       proxyOn proxyType proxyHost proxyPort proxyAuth proxyUser proxyPass proxyModel
       procApps procEnabled procAdd procRemove
 

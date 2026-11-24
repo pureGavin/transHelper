@@ -41,6 +41,7 @@ const (
 	esMultiLine   = 0x0004
 	esAutoVScroll = 0x0040
 	ssCenterImage = 0x0200
+	ssNoPrefix    = 0x0080
 	bsDefPush     = 0x0001
 	bsAutoCheck   = 0x0003
 
@@ -63,6 +64,8 @@ const (
 	idShowKey    = 104
 	idTimeout    = 105
 	idTheme      = 106
+	idTest       = 107
+	idTestStatus = 108
 	idTabs       = 110
 	idLink       = 111
 	idProxyOn    = 201
@@ -82,6 +85,7 @@ const (
 
 	emSetLimitText     = 0x00C5
 	emSetPasswordChar  = 0x00CC
+	enChange           = 0x0300
 	bmGetCheck         = 0x00F0
 	bmSetCheck         = 0x00F1
 	bstChecked         = 1
@@ -163,6 +167,13 @@ type settingsWindow struct {
 	applyBtn    uintptr
 	cancel      uintptr
 	tipText     [][]uint16
+
+	// 模型测试在后台跑。testGen 变了就丢掉迟到的结果，避免改完输入还显示上一次。
+	testBusy   bool
+	testGen    uint64
+	testCancel func()
+	testMu     sync.Mutex
+	testQueue  []testOutcome
 }
 
 // generalPage 是「通用」页，改模型地址、名称、密钥、超时和界面主题。
@@ -174,10 +185,12 @@ type generalPage struct {
 	timeout uintptr
 	theme   uintptr
 	showKey uintptr
+	test    uintptr
+	status  uintptr
 }
 
 func (g generalPage) controls() []uintptr {
-	out := []uintptr{g.url, g.model, g.key, g.timeout, g.theme, g.showKey}
+	out := []uintptr{g.url, g.model, g.key, g.timeout, g.theme, g.showKey, g.test, g.status}
 	return append(out, g.labels[:]...)
 }
 
@@ -356,7 +369,7 @@ func (s *settingsWindow) createGeneral(instance windows.Handle) error {
 	if s.general.timeout, err = createControl("EDIT", "", editStyle|esNumber, 0, 0, 10, 10, s.body, idTimeout, instance); err != nil {
 		return err
 	}
-	comboStyle := uintptr(wsChild | wsVisible | wsTabStop | wsVScroll | cbsDropDownList | cbsHasStrings)
+	comboStyle := uintptr(wsChild | wsVisible | wsTabStop | wsVScroll | wsClipSiblings | cbsDropDownList | cbsHasStrings)
 	if s.general.theme, err = createControl("COMBOBOX", "", comboStyle, 0, 0, 10, 10, s.body, idTheme, instance); err != nil {
 		return err
 	}
@@ -364,6 +377,15 @@ func (s *settingsWindow) createGeneral(instance windows.Handle) error {
 		text := utf16String(item)
 		procSendMessage.Call(s.general.theme, cbAddString, 0, uintptr(unsafe.Pointer(&text[0])))
 		runtime.KeepAlive(text)
+	}
+	// 后创建，盖在主题下拉的窗口矩形上面。下拉没收起时那块区域本来是空的。
+	btnStyle := uintptr(wsChild | wsVisible | wsTabStop | wsClipSiblings)
+	if s.general.test, err = createControl("BUTTON", "测试", btnStyle, 0, 0, 10, 10, s.body, idTest, instance); err != nil {
+		return err
+	}
+	statusStyle := uintptr(wsChild | wsVisible | wsClipSiblings | ssNoPrefix)
+	if s.general.status, err = createControl("STATIC", "", statusStyle, 0, 0, 10, 10, s.body, idTestStatus, instance); err != nil {
+		return err
 	}
 	return nil
 }
@@ -437,7 +459,8 @@ func (s *settingsWindow) scale(v int) int {
 }
 
 func generalBody() int {
-	return 5 * (layoutRowH + layoutRowGap)
+	// 五行输入，再加测试按钮和两行结果。仍低于进程页和网络页，窗口高度不变。
+	return 5*(layoutRowH+layoutRowGap) + layoutRowH*2 + layoutRowGap
 }
 
 func maxPageBody() int {
@@ -534,6 +557,18 @@ func (s *settingsWindow) placeGeneral(top, width int) {
 			moveWindow(s.general.showKey, x+editW+s.scale(layoutGap), y, s.scale(layoutCheckW), s.scale(layoutRowH))
 		}
 	}
+	testY := top + s.scale(5*(layoutRowH+layoutRowGap))
+	testX := s.scale(layoutMargin + layoutLabelW + layoutGap)
+	btnW := s.scale(layoutBtnW)
+	if btnW > valueW {
+		btnW = valueW
+	}
+	moveWindow(s.general.test, testX, testY, btnW, s.scale(layoutRowH))
+	statusW := valueW - btnW - s.scale(layoutGap)
+	if statusW < s.scale(40) {
+		statusW = s.scale(40)
+	}
+	moveWindow(s.general.status, testX+btnW+s.scale(layoutGap), testY, statusW, s.scale(layoutRowH*2))
 }
 
 func (s *settingsWindow) placeButtons(clientW, clientH int) {
@@ -780,6 +815,7 @@ func (s *settingsWindow) createTips() {
 		{s.general.key, "不需要时留空，只保存在本机配置文件"},
 		{s.general.timeout, "单次翻译最多等待 1 到 120 秒，超时不改动输入框"},
 		{s.general.theme, "跟随系统、浅色或深色。点应用后记住"},
+		{s.general.test, "用上面填的地址、模型名称和 API Key 试译一句，不保存"},
 		{s.about.digest, "和 Release 说明里的值核对"},
 	}
 	items = append(items, s.network.tips()...)
@@ -856,34 +892,11 @@ func (s *settingsWindow) apply() {
 	if s.hwnd == 0 || h == nil {
 		return
 	}
-	seconds, err := strconv.Atoi(strings.TrimSpace(windowText(s.general.timeout)))
-	if err != nil || seconds < 1 || seconds > 120 {
-		s.reject(pageGeneral, s.general.timeout, "超时必须是 1 到 120 的整数")
-		return
-	}
-	cfg := s.base
-	cfg.BaseURL = strings.TrimSpace(windowText(s.general.url))
-	cfg.Model = strings.TrimSpace(windowText(s.general.model))
-	cfg.APIKey = strings.TrimSpace(windowText(s.general.key))
-	cfg.Timeout = time.Duration(seconds) * time.Second
-	cfg.Theme = selectedTheme(s.general.theme)
-	// 窗口开着时，菜单可能已经改过自动检查。以内存里的为准，避免应用时把它改回去。
-	cfg.AutoCheckUpdate = h.cfg.AutoCheckUpdate
-	if cfg.BaseURL == "" {
-		s.reject(pageGeneral, s.general.url, "请填写模型地址")
-		return
-	}
-	if cfg.Model == "" {
-		s.reject(pageGeneral, s.general.model, "请填写模型名称")
-		return
-	}
-	proxy, focus, message, bad := s.network.read()
+	cfg, page, focus, message, bad := s.collect()
 	if bad {
-		s.reject(pageNetwork, focus, message)
+		s.reject(page, focus, message)
 		return
 	}
-	cfg.Proxy = proxy
-	cfg.Processes = append([]string(nil), s.process.enabledNames...)
 	if err := config.Save(h.configPath, cfg); err != nil {
 		if strings.Contains(err.Error(), "proxy.") {
 			s.reject(pageNetwork, 0, err.Error())
@@ -963,6 +976,7 @@ func (s *settingsWindow) close() {
 }
 
 func (s *settingsWindow) onDestroy() {
+	s.cancelModelTest()
 	if s.tip != 0 {
 		procDestroyWindow.Call(s.tip)
 		s.tip = 0
@@ -1030,6 +1044,11 @@ func (h *host) handleSettingsKey(m *msg) bool {
 			s.about.openLink()
 			return true
 		}
+		focus, _, _ := procGetFocus.Call()
+		if m.Hwnd == s.general.test || focus == s.general.test {
+			s.testModel()
+			return true
+		}
 		if !isButton(m.Hwnd) {
 			s.apply()
 			return true
@@ -1082,6 +1101,14 @@ func settingsWndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 			s.close()
 		case idShowKey:
 			s.syncPassword()
+		case idTest:
+			if code == bnClicked {
+				s.testModel()
+			}
+		case idURL, idModel, idKey, idTimeout:
+			if code == enChange {
+				s.noteModelFieldChanged()
+			}
 		case idTheme:
 			if code == cbnSelChange {
 				s.previewTheme()

@@ -147,6 +147,7 @@ const (
 	wmShowNotify   = wmApp + 2
 	wmUpdateResult = wmApp + 3
 	wmInstallReady = wmApp + 4
+	wmTestResult   = wmApp + 5
 	pmNoRemove     = 0x0000
 	mbIconWarning  = 0x30
 	wsExToolWindow = 0x00000080

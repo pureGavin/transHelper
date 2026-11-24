@@ -245,7 +245,7 @@ func (s *settingsWindow) applyControlThemes() {
 	}
 	for _, hwnd := range []uintptr{
 		s.applyBtn, s.cancel, s.body, s.tip, s.tabs, s.about.link,
-		s.general.showKey, s.network.enable, s.network.auth, s.network.forModel,
+		s.general.showKey, s.general.test, s.network.enable, s.network.auth, s.network.forModel,
 		s.process.add, s.process.remove,
 	} {
 		setWindowTheme(hwnd, explorer)

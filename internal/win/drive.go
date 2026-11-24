@@ -74,6 +74,8 @@ var controlSpecs = []controlSpec{
 	{name: "showKey", id: idShowKey},
 	{name: "timeout", id: idTimeout},
 	{name: "theme", id: idTheme, combo: []string{config.ThemeSystem, config.ThemeLight, config.ThemeDark}},
+	{name: "test", id: idTest},
+	{name: "testStatus", id: idTestStatus},
 	{name: "tabs", id: idTabs},
 	{name: "link", id: idLink},
 	{name: "proxyOn", id: idProxyOn},

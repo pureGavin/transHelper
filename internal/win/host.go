@@ -354,6 +354,11 @@ func wndProc(hwnd, message, wParam, lParam uintptr) uintptr {
 	case wmInstallReady:
 		h.onInstallReady()
 		return 0
+	case wmTestResult:
+		if h.settings != nil {
+			h.settings.onTestResult()
+		}
+		return 0
 	case wmClose:
 		h.cancel()
 		procPostQuitMessage.Call(0)

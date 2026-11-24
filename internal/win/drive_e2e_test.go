@@ -4,14 +4,19 @@ package win
 
 import (
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"transhelper/internal/config"
+	"transhelper/internal/translate"
 )
 
 func TestE2E_OpenSettings(t *testing.T) {
@@ -586,6 +591,105 @@ func writeDriveProcesses(t *testing.T, app *App, names []string) {
 	if err := config.Save(app.ConfigPath, cfg); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestE2E_ModelTest(t *testing.T) {
+	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+		t.Setenv(key, "")
+	}
+	t.Setenv("NO_PROXY", "*")
+	t.Setenv("no_proxy", "*")
+
+	var sawSample atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if strings.Contains(string(body), translate.CheckSample) {
+			sawSample.Store(true)
+		}
+		if r.Header.Get("Authorization") != "Bearer good-key" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = io.WriteString(w, `{"error":{"message":"do-not-show-this"}}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"Hello"}}]}`)
+	}))
+	defer srv.Close()
+
+	app := newDriveApp(t)
+	before := driveConfigText(t, app)
+	openDriveSettings(t, app)
+	shotDrive(t, app, "model-test-light.png")
+	mustDrive(t, app.Select("theme", "dark"))
+	if _, err := app.WaitControl("theme", func(ctrl ControlState) bool { return ctrl.Value == "dark" }); err != nil {
+		t.Fatal(err)
+	}
+	shotDrive(t, app, "model-test-dark.png")
+	mustDrive(t, app.Select("theme", "light"))
+
+	mustDrive(t, app.Set("url", srv.URL+"/v1"))
+	mustDrive(t, app.Set("model", "demo"))
+	mustDrive(t, app.Set("key", "good-key"))
+	mustDrive(t, app.Click("test"))
+	status, err := app.WaitControl("testStatus", func(ctrl ControlState) bool {
+		return strings.Contains(ctrl.Text, "可用") && strings.Contains(ctrl.Text, "Hello")
+	})
+	if err != nil {
+		t.Fatalf("测试结果 = %q", status.Text)
+	}
+	if _, err := app.WaitControl("test", func(ctrl ControlState) bool { return ctrl.Enabled }); err != nil {
+		t.Fatal(err)
+	}
+	logText, err := app.Log()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(logText, "模型测试成功") || strings.Contains(logText, "Hello") {
+		t.Fatalf("日志不应包含译文:\n%s", logText)
+	}
+	if !sawSample.Load() {
+		t.Fatal("模型没有收到固定样句")
+	}
+	shotDrive(t, app, "model-test-result.png")
+
+	mustDrive(t, app.Set("model", "other-model"))
+	if _, err := app.WaitControl("testStatus", func(ctrl ControlState) bool { return ctrl.Text == "" }); err != nil {
+		t.Fatal(err)
+	}
+	mustDrive(t, app.Set("model", "demo"))
+	mustDrive(t, app.Set("key", "bad-key"))
+	mustDrive(t, app.Click("test"))
+	status, err = app.WaitControl("testStatus", func(ctrl ControlState) bool {
+		return strings.Contains(ctrl.Text, "HTTP 401") && strings.Contains(ctrl.Text, "API Key")
+	})
+	if err != nil {
+		t.Fatalf("失败结果 = %q", status.Text)
+	}
+	if strings.Contains(status.Text, "do-not-show-this") {
+		t.Fatalf("结果带了响应正文: %s", status.Text)
+	}
+	mustDrive(t, app.Click("cancel"))
+	if _, err := app.WaitSettings(false); err != nil {
+		t.Fatal(err)
+	}
+	if got := driveConfigText(t, app); got != before {
+		t.Fatal("测试或取消后配置文件变了")
+	}
+}
+
+func shotDrive(t *testing.T, app *App, name string) {
+	t.Helper()
+	root, err := ModuleRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, ".tools", "tmp", name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Shot(path); err != nil {
+		t.Fatal(err)
+	}
+	t.Log(path)
 }
 
 func TestE2E_Exit(t *testing.T) {
