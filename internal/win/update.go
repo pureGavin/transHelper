@@ -47,14 +47,10 @@ type installOutcome struct {
 }
 
 func (h *host) checkUpdate(manual bool) {
+	// 不在点击时通知。查询通常一两秒就有结果，先弹「正在检查更新」会被马上盖掉。
+	// 上一次还没结束时再点，直接忽略，等那次的结果通知。
 	if !h.checking.CompareAndSwap(false, true) {
-		if manual {
-			h.info("正在检查更新")
-		}
 		return
-	}
-	if manual {
-		h.info("正在检查更新")
 	}
 	// 在界面线程取出代理客户端，避免和「应用设置」同时读写配置。
 	client := h.cfg.Proxy.Client()

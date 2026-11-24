@@ -462,6 +462,43 @@ func TestE2E_Processes(t *testing.T) {
 	}
 }
 
+func TestE2E_CheckUpdateQuiet(t *testing.T) {
+	app := newDriveApp(t)
+	mustDrive(t, app.Menu("check-update"))
+	// 上一次还没结束时再点，也不该弹出「正在检查更新」。
+	mustDrive(t, app.Menu("check-update"))
+	var body string
+	err := poll(20*time.Second, func() bool {
+		text, readErr := app.Log()
+		if readErr != nil {
+			return false
+		}
+		body = text
+		return updateResultLogged(text)
+	})
+	if err != nil {
+		t.Fatalf("没有等到检查结果:\n%s", body)
+	}
+	if strings.Contains(body, "正在检查更新") {
+		t.Fatalf("不应出现正在检查更新:\n%s", body)
+	}
+}
+
+func updateResultLogged(text string) bool {
+	for _, part := range []string{
+		"通知：已是最新版本",
+		"通知：发现新版本",
+		"通知：检查更新失败",
+		"通知：还没有已发布的版本",
+		"通知：当前是本机构建",
+	} {
+		if strings.Contains(text, part) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestE2E_Exit(t *testing.T) {
 	app := newDriveApp(t)
 	if err := app.Stop(); err != nil {
