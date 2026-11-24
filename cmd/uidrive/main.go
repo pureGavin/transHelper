@@ -121,14 +121,20 @@ func run(command string, args []string) error {
 		}
 		return withApp(func(app *win.App) error { return app.Resize(height) })
 	case "wheel":
-		if len(args) != 1 {
-			return fmt.Errorf("用法: uidrive wheel <格数>，正数向下")
+		name, raw, err := wheelArgs(args)
+		if err != nil {
+			return err
 		}
-		n, err := strconv.Atoi(args[0])
+		n, err := strconv.Atoi(raw)
 		if err != nil {
 			return fmt.Errorf("格数必须是整数")
 		}
-		return withApp(func(app *win.App) error { return app.Wheel(n) })
+		return withApp(func(app *win.App) error {
+			if name == "" {
+				return app.Wheel(n)
+			}
+			return app.WheelOn(name, n)
+		})
 	case "shot":
 		if len(args) != 1 {
 			return fmt.Errorf("用法: uidrive shot <png>")
@@ -228,6 +234,17 @@ func printJSON(v any) error {
 	return enc.Encode(v)
 }
 
+func wheelArgs(args []string) (name, raw string, err error) {
+	switch len(args) {
+	case 1:
+		return "", args[0], nil
+	case 2:
+		return args[0], args[1], nil
+	default:
+		return "", "", fmt.Errorf("用法: uidrive wheel [procApps|procEnabled] <格数>，正数向下")
+	}
+}
+
 func usage() {
 	fmt.Fprint(os.Stderr, `用法: uidrive <命令>
 
@@ -245,7 +262,7 @@ func usage() {
   dialog [ok]
   balloon-click
   resize [高度]
-  wheel <格数>                   正数向下
+  wheel [列表] <格数>            正数向下。带上 procApps 或 procEnabled 时滚这个列表
   shot <png>
   log
   close                          关掉设置窗口，不保存

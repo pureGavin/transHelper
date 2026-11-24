@@ -14,13 +14,15 @@ const (
 	lbsNotify           = 0x0001
 	lbsNoIntegralHeight = 0x0100
 
-	lbAddString    = 0x0180
-	lbResetContent = 0x0184
-	lbSetCurSel    = 0x0186
-	lbGetCurSel    = 0x0188
-	lbGetText      = 0x0189
-	lbGetTextLen   = 0x018A
-	lbGetCount     = 0x018B
+	lbAddString     = 0x0180
+	lbResetContent  = 0x0184
+	lbSetCurSel     = 0x0186
+	lbGetCurSel     = 0x0188
+	lbGetText       = 0x0189
+	lbGetTextLen    = 0x018A
+	lbGetCount      = 0x018B
+	lbGetTopIndex   = 0x018E
+	lbGetItemHeight = 0x01A1
 
 	bnClicked    = 0
 	lbnSelChange = 1

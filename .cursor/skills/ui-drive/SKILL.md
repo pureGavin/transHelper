@@ -53,7 +53,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uidrive.ps1 stop
 | `dialog` | 读提示框文字。`dialog ok` 点确定 |
 | `close` | 关闭设置窗口，不保存 |
 | `resize 200` | 改高度。省略高度时缩到最小 |
-| `wheel 4` | 滚动。正数向下 |
+| `wheel 4` | 滚动整页。正数向下。`wheel procEnabled 4` 滚动这个列表 |
 | `shot a.png` | 只截设置窗口 |
 | `balloon-click` | 点当前托盘通知 |
 | `log` | 读测试实例的日志 |
@@ -61,7 +61,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uidrive.ps1 stop
 
 控件名：`apply`、`cancel`、`url`、`model`、`key`、`showKey`、`timeout`、`theme`、`tabs`、`link`、`proxyOn`、`proxyType`、`proxyHost`、`proxyPort`、`proxyAuth`、`proxyUser`、`proxyPass`、`proxyModel`、`procApps`、`procEnabled`、`procAdd`、`procRemove`。
 
-列表控件的 `state` 里有 `items` 和 `selected`。`procApps` 是左边正在运行的程序，`procEnabled` 是右边启用翻译的程序。
+列表控件的 `state` 里有 `items`、`selected` 和 `top`。`top` 是列表滚动到第几行，从 0 起。`procApps` 是左边正在运行的程序，`procEnabled` 是右边启用翻译的程序。
 
 `state` 里密码框没有正文。Windows 会拦住别的进程读取密码框，所以 `textLen` 也经常是 0，不能靠它判断写进去没有。勾选「显示」只把 `passwordChar` 变成 0。要确认密钥，点「应用」后读测试配置，不要把密钥打到对话里。
 

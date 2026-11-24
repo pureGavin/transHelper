@@ -349,6 +349,7 @@ func (s *settingsWindow) onMouseWheel(wParam uintptr) {
 
 // handleSettingsWheel 在消息循环里吃掉滚轮。
 // 焦点在输入框上时，滚轮消息发给输入框，单行输入框不会把页面滚起来。
+// 进程页里，指针停在放不下的列表上时交给列表自己滚，不必先点一下列表。
 func (h *host) handleSettingsWheel(m *msg) bool {
 	s := h.settings
 	if s == nil || s.hwnd == 0 || m.Message != wmMouseWheel || !s.owns(m.Hwnd) {
@@ -357,8 +358,101 @@ func (h *host) handleSettingsWheel(m *msg) bool {
 	if s.dropDownOpen() {
 		return false
 	}
+	if list := s.listUnderWheel(m.LParam, m.Hwnd); list != 0 && listBoxOverflows(list) {
+		procSendMessage.Call(list, wmMouseWheel, m.WParam, m.LParam)
+		return true
+	}
 	s.onMouseWheel(m.WParam)
 	return true
+}
+
+// listUnderWheel 决定这次滚轮该交给哪个进程列表。
+// lParam 是屏幕坐标。指针在设置窗口里时只认指针下面的列表；
+// 指针在窗口外（测试直接投给列表，或焦点不在窗口上）时认消息收件人。
+func (s *settingsWindow) listUnderWheel(lParam, recipient uintptr) uintptr {
+	if s == nil || s.page != pageProcesses {
+		return 0
+	}
+	x, y := wheelPointOf(lParam)
+	window := windowRectOf(s.hwnd)
+	// 列表滚出内容区后，窗口矩形会伸到标签下面。只算内容区里看得见的部分。
+	clip := windowRectOf(s.body)
+	return listWheelTarget(
+		x, y, window,
+		s.process.running, s.process.enabled,
+		intersectRect(windowRectOf(s.process.running), clip),
+		intersectRect(windowRectOf(s.process.enabled), clip),
+		recipient,
+	)
+}
+
+// wheelPointOf 从 WM_MOUSEWHEEL 的 lParam 取出屏幕坐标。高字和低字都是有符号的。
+func wheelPointOf(lParam uintptr) (int32, int32) {
+	x := int32(int16(lParam & 0xFFFF))
+	y := int32(int16((lParam >> 16) & 0xFFFF))
+	return x, y
+}
+
+func pointInRect(x, y int32, r rect) bool {
+	return x >= r.Left && x < r.Right && y >= r.Top && y < r.Bottom
+}
+
+// intersectRect 返回 a 和 b 的交集。没有交集时宽高为 0。
+func intersectRect(a, b rect) rect {
+	if a.Left < b.Left {
+		a.Left = b.Left
+	}
+	if a.Top < b.Top {
+		a.Top = b.Top
+	}
+	if a.Right > b.Right {
+		a.Right = b.Right
+	}
+	if a.Bottom > b.Bottom {
+		a.Bottom = b.Bottom
+	}
+	if a.Left >= a.Right || a.Top >= a.Bottom {
+		return rect{}
+	}
+	return a
+}
+
+// listWheelTarget 选择接收滚轮的列表。指针在 window 内时只看两个列表的可见区域。
+func listWheelTarget(px, py int32, window rect, running, enabled uintptr, runningBounds, enabledBounds rect, recipient uintptr) uintptr {
+	if pointInRect(px, py, window) {
+		switch {
+		case running != 0 && pointInRect(px, py, runningBounds):
+			return running
+		case enabled != 0 && pointInRect(px, py, enabledBounds):
+			return enabled
+		default:
+			return 0
+		}
+	}
+	if recipient != 0 && (recipient == running || recipient == enabled) {
+		return recipient
+	}
+	return 0
+}
+
+// listOverflows 报告 count 行是否超过可见高度。刚好盛下时没有滚动条。
+func listOverflows(count, itemHeight, viewHeight int) bool {
+	if count <= 0 || itemHeight <= 0 || viewHeight <= 0 {
+		return false
+	}
+	return count > viewHeight/itemHeight
+}
+
+func listBoxOverflows(hwnd uintptr) bool {
+	if hwnd == 0 {
+		return false
+	}
+	count, _, _ := procSendMessage.Call(hwnd, lbGetCount, 0, 0)
+	if int32(count) <= 0 {
+		return false
+	}
+	itemHeight, _, _ := procSendMessage.Call(hwnd, lbGetItemHeight, 0, 0)
+	return listOverflows(int(count), int(itemHeight), clientHeight(hwnd))
 }
 
 func (s *settingsWindow) scrollIntoView(hwnd uintptr) {

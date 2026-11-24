@@ -3,6 +3,7 @@
 package win
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -504,6 +505,87 @@ func updateResultLogged(text string) bool {
 		}
 	}
 	return false
+}
+
+func TestE2E_ProcessWheel(t *testing.T) {
+	app := newDriveApp(t)
+	writeDriveProcesses(t, app, numberedProcesses(40))
+	openDriveSettings(t, app)
+	mustDrive(t, app.Tab("processes"))
+	if err := waitDrivePage(t, app, "processes"); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitDriveListLen(t, app, "procEnabled", 40); err != nil {
+		t.Fatal(err)
+	}
+	before, err := app.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustDrive(t, app.WheelOn("procEnabled", 4))
+	if err := poll(driveTimeout, func() bool {
+		state, readErr := app.State()
+		if readErr != nil {
+			return false
+		}
+		return state.Controls["procEnabled"].Top > before.Controls["procEnabled"].Top &&
+			state.ScrollPos == before.ScrollPos
+	}); err != nil {
+		state, _ := app.State()
+		t.Fatalf("列表没有滚动: before top %d scroll %d, now %+v", before.Controls["procEnabled"].Top, before.ScrollPos, state)
+	}
+
+	mustDrive(t, app.Close())
+	if _, err := app.WaitSettings(false); err != nil {
+		t.Fatal(err)
+	}
+	writeDriveProcesses(t, app, []string{"ms-teams.exe", "Teams.exe"})
+	openDriveSettings(t, app)
+	mustDrive(t, app.Tab("processes"))
+	if err := waitDrivePage(t, app, "processes"); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitDriveListLen(t, app, "procEnabled", 2); err != nil {
+		t.Fatal(err)
+	}
+	mustDrive(t, app.Resize(1))
+	var pageBefore int
+	if err := poll(driveTimeout, func() bool {
+		state, readErr := app.State()
+		if readErr != nil || !state.CanScroll {
+			return false
+		}
+		pageBefore = state.ScrollPos
+		return true
+	}); err != nil {
+		state, _ := app.State()
+		t.Fatalf("窗口调矮后不能滚动: %+v", state)
+	}
+	mustDrive(t, app.WheelOn("procEnabled", 4))
+	if err := poll(driveTimeout, func() bool {
+		state, readErr := app.State()
+		return readErr == nil && state.ScrollPos > pageBefore
+	}); err != nil {
+		state, _ := app.State()
+		t.Fatalf("放得下的列表没有把滚轮交给整页，位置 %d: %+v", pageBefore, state)
+	}
+}
+
+func numberedProcesses(n int) []string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = fmt.Sprintf("app-%02d.exe", i+1)
+	}
+	return out
+}
+
+func writeDriveProcesses(t *testing.T, app *App, names []string) {
+	t.Helper()
+	cfg := loadDriveConfig(t, app)
+	cfg.Processes = names
+	if err := config.Save(app.ConfigPath, cfg); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestE2E_Exit(t *testing.T) {

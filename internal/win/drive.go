@@ -137,6 +137,7 @@ type ControlState struct {
 	Value        string   `json:"value,omitempty"`
 	Items        []string `json:"items,omitempty"`
 	Selected     string   `json:"selected,omitempty"`
+	Top          int      `json:"top,omitempty"`
 }
 
 // DialogState 是设置窗口弹出的提示框。
@@ -511,6 +512,22 @@ func (a *App) Wheel(notches int) error {
 	if err != nil {
 		return err
 	}
+	return postWheel(hwnd, notches, false)
+}
+
+// WheelOn 把滚轮投给指定列表。正数向下。坐标放在屏幕外，按这个列表处理，不看窗口摆在哪。
+func (a *App) WheelOn(name string, notches int) error {
+	spec, hwnd, err := a.control(name)
+	if err != nil {
+		return err
+	}
+	if !spec.list {
+		return fmt.Errorf("%s 不是列表", name)
+	}
+	return postWheel(hwnd, notches, true)
+}
+
+func postWheel(hwnd uintptr, notches int, offscreen bool) error {
 	if notches == 0 {
 		return nil
 	}
@@ -523,7 +540,13 @@ func (a *App) Wheel(notches int) error {
 	// 正的滚轮增量会把内容往上移。要让滚动位置变大，得投一个负增量。
 	delta := int16(-notches * wheelDelta)
 	wparam := uintptr(uint32(uint16(delta)) << 16)
-	return postMessage(hwnd, wmMouseWheel, wparam, 0)
+	var lParam uintptr
+	if offscreen {
+		// 落在屏幕外。常量转 uint16 会被拒绝，所以先写成变量。
+		off := int16(-32000)
+		lParam = uintptr(uint16(off)) | uintptr(uint16(off))<<16
+	}
+	return postMessage(hwnd, wmMouseWheel, wparam, lParam)
 }
 
 // State 读取设置窗口。没打开时 SettingsOpen 为 false。
@@ -804,6 +827,9 @@ func readControl(spec controlSpec, hwnd uintptr) ControlState {
 		items, selected := readListBox(hwnd)
 		ctrl.Items = items
 		ctrl.Selected = selected
+		if top, err := sendMessage(hwnd, lbGetTopIndex, 0, 0); err == nil && int32(top) >= 0 {
+			ctrl.Top = int(top)
+		}
 	}
 	return ctrl
 }
