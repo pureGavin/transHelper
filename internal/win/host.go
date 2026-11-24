@@ -167,12 +167,15 @@ func (h *host) start() error {
 	}
 	h.syncHotkeys()
 	h.logger.Printf("已启动，前台是白名单进程时热键才会生效")
-	if h.firstRun {
+	// 首次运行和刚更新完各有自己的通知。再叠一条「已启动」会把它们盖掉。
+	switch {
+	case h.firstRun:
 		h.Notify("已创建配置文件，请填写模型地址")
 		h.openSettings()
-	}
-	if h.updated {
+	case h.updated:
 		h.info("已更新到版本 " + h.version)
+	default:
+		h.info("已启动")
 	}
 	h.syncAutoCheck()
 	return nil

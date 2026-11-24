@@ -462,6 +462,13 @@ func TestE2E_Processes(t *testing.T) {
 	}
 }
 
+func TestE2E_StartNotice(t *testing.T) {
+	app := newDriveApp(t)
+	if err := app.WaitLog("通知：已启动"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestE2E_CheckUpdateQuiet(t *testing.T) {
 	app := newDriveApp(t)
 	mustDrive(t, app.Menu("check-update"))

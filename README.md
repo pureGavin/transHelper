@@ -18,7 +18,7 @@
 
 1. 打开 [Releases](https://github.com/pureGavin/transHelper/releases/latest)，下载 `transHelper-YYYY.MM.x-windows-amd64.zip`。
 2. 解压。
-3. 双击 `transhelper.exe`。没有黑色控制台窗口，托盘里出现图标。同目录没有 `transhelper.toml` 时会自动创建，提示填写模型地址，并打开设置窗口。已有配置不会被覆盖。右键托盘图标可以选择「设置…」。
+3. 双击 `transhelper.exe`。没有黑色控制台窗口，托盘里出现图标，右下角通知「已启动」。同目录没有 `transhelper.toml` 时会自动创建，提示填写模型地址，并打开设置窗口，这次不另弹「已启动」。已有配置不会被覆盖。右键托盘图标可以选择「设置…」。
 4. 在 Teams 输入框里按 `Alt+T` 或 `Alt+Enter`。回复邮件时先选中自己写的部分，再按 `Ctrl+Alt+T`。
 5. 退出：在托盘图标上右键，选择“退出”。
 
